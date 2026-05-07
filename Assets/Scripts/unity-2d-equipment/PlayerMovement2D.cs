@@ -3,7 +3,9 @@ using UnityEngine;
 /// <summary>
 /// Minimal platformer controller for an empty 2D project (Rigidbody2D + ground check).
 /// Attach to the Player root. Assign Ground layer on <see cref="groundLayer"/>.
+/// Yields to <see cref="PlayerDodge2D"/> while a roll is active (runs before dodge via execution order).
 /// </summary>
+[DefaultExecutionOrder(-50)]
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerMovement2D : MonoBehaviour
 {
@@ -20,6 +22,7 @@ public class PlayerMovement2D : MonoBehaviour
     public float groundCheckRadius = 0.08f;
 
     Rigidbody2D _rb;
+    PlayerDodge2D _dodge;
     float _inputX;
     bool _jumpPressed;
 
@@ -27,6 +30,7 @@ public class PlayerMovement2D : MonoBehaviour
     {
         _rb = GetComponent<Rigidbody2D>();
         _rb.freezeRotation = true;
+        _dodge = GetComponent<PlayerDodge2D>();
     }
 
     void Update()
@@ -45,15 +49,15 @@ public class PlayerMovement2D : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (_dodge != null && _dodge.IsRollActive)
+            return;
+
         bool grounded = IsGrounded();
         Vector2 v = _rb.velocity;
         v.x = _inputX * moveSpeed;
 
         if (_jumpPressed && grounded)
-        {
             v.y = jumpForce;
-            grounded = false;
-        }
 
         _rb.velocity = v;
         _jumpPressed = false;

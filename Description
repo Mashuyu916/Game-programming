@@ -1,0 +1,11 @@
+Game UI Sketch Description
+Main Rectangular Frame：
+A prominent rectangular box is centered in the UI. In its top-left corner, there is a small triangle pointing inward or outward, likely serving as a decorative element, an icon placeholder, or a button indicator.
+Right Side – Vertical Line with Triangle
+Along the right side of the rectangle, a vertical straight line extends. 
+Attached to this line (possibly at its midpoint or top end) is a small triangle. This might represent a slider track, a scrollbar, or a draggable handle for adjusting a setting like volume or brightness.
+Bottom Side – Horizontal Line with Triangle
+Below the rectangle, a horizontal line runs parallel to the bottom edge. A small triangle sits on this line,
+likely indicating another slider or interactive control, possibly for horizontal adjustments such as time, progress, or value selection.
+Bottom-Right Corner – Small Circle
+At the bottom-right corner of the rectangle, there is a small circle. This could function as a confirm button, a settings icon, a resize handle, or a status indicator (e.g., ready, active, or unlocked).

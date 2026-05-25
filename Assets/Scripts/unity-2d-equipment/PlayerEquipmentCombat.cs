@@ -42,7 +42,7 @@ public class PlayerEquipmentCombat : MonoBehaviour
 
     void SpawnHitbox(WeaponData weapon)
     {
-        float facing = GetFacingSign();
+        float facing = PlayerFacing2D.GetFacingSign(transform, facingVisual);
 
         Vector3 local = new Vector3(weapon.hitboxOffset.x * facing, weapon.hitboxOffset.y, 0f);
         Vector3 worldPos = attackPivot.TransformPoint(local);
@@ -64,14 +64,4 @@ public class PlayerEquipmentCombat : MonoBehaviour
         dmg.Initialize(weapon.damage, gameObject, hittableLayers, weapon.hitboxDuration);
     }
 
-    float GetFacingSign()
-    {
-        if (facingVisual != null)
-            return facingVisual.flipX ? -1f : 1f;
-
-        float sx = transform.lossyScale.x;
-        if (Mathf.Approximately(sx, 0f))
-            return 1f;
-        return Mathf.Sign(sx);
-    }
 }

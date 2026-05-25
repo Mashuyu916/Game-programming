@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Dead Cells¨Cstyle horizontal roll: burst speed + invulnerability.
+/// Dead Cellsï¿½Cstyle horizontal roll: burst speed + invulnerability.
 /// Requires <see cref="Rigidbody2D"/> and <see cref="PlayerInvincibility"/> on the same object.
 /// Runs after <see cref="PlayerMovement2D"/> so roll velocity wins for that window.
 /// </summary>
@@ -44,7 +44,7 @@ public class PlayerDodge2D : MonoBehaviour
         if (!Input.GetKeyDown(dodgeKey))
             return;
 
-        _facingSign = GetFacingSign();
+        _facingSign = PlayerFacing2D.GetFacingSign(transform, facingVisual);
         if (Mathf.Approximately(Mathf.Abs(_facingSign), 0f))
             _facingSign = 1f;
 
@@ -60,13 +60,4 @@ public class PlayerDodge2D : MonoBehaviour
         _rb.velocity = new Vector2(_facingSign * rollSpeed, _rb.velocity.y);
     }
 
-    float GetFacingSign()
-    {
-        if (facingVisual != null)
-            return facingVisual.flipX ? -1f : 1f;
-        float sx = transform.lossyScale.x;
-        if (Mathf.Approximately(sx, 0f))
-            return 1f;
-        return Mathf.Sign(sx);
-    }
 }

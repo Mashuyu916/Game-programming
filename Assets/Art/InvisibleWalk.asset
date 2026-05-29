@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: InvisibleWalk
   m_EditorClassIdentifier: 
   m_Sprite: {fileID: 21300000, guid: c0f205a59cee69d48b38ae714bd9856a, type: 3}
-  m_Color: {r: 0.76729554, g: 0.38364768, b: 0.38364768, a: 1}
+  m_Color: {r: 0.38431373, g: 0.76490957, b: 0.76862746, a: 1}
   m_Transform:
     e00: 1
     e01: 0

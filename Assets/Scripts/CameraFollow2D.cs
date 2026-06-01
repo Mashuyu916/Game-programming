@@ -14,6 +14,7 @@ public class CameraFollow2D : MonoBehaviour
     [Tooltip("0 = snap instantly. Higher = smoother follow.")]
     [Min(0f)]
     public float smoothSpeed = 0f;
+    public bool lockHorizontal;
 
     void LateUpdate()
     {
@@ -21,6 +22,8 @@ public class CameraFollow2D : MonoBehaviour
             return;
 
         Vector3 desired = target.position + offset;
+        if (lockHorizontal)
+            desired.x = transform.position.x;
 
         if (smoothSpeed <= 0f)
             transform.position = desired;

@@ -13,6 +13,11 @@ public class PlayerAnimatorBridge : MonoBehaviour
     [Header("Animator Parameters (must match your Animator)")]
     public string speedParam = "Speed";
     public string attackTriggerParam = "Attack";
+    [Tooltip("Small damping keeps Idle / Run changes from looking abrupt.")]
+    public float speedDampTime = 0.08f;
+    [Tooltip("Keeps the running animation active while an endless-runner level scrolls.")]
+    public bool endlessRunnerMode;
+    public float endlessRunnerVisualSpeed = 7f;
 
     public bool enableRollTrigger = true;
     public string rollTriggerParam = "Roll";
@@ -35,14 +40,15 @@ public class PlayerAnimatorBridge : MonoBehaviour
         if (animator == null || rb == null)
             return;
 
-        // ÓÃË®Æ½ËÙ¶ÈÇı¶¯ Idle/Run
-        animator.SetFloat(speedParam, Mathf.Abs(rb.velocity.x));
+        // è®¾ç½®æ¨ªå‘é€Ÿåº¦ï¼Œé©±åŠ¨ Idle / Run åŠ¨ç”»
+        float visualSpeed = endlessRunnerMode ? endlessRunnerVisualSpeed : Mathf.Abs(rb.velocity.x);
+        animator.SetFloat(speedParam, visualSpeed, speedDampTime, Time.deltaTime);
 
-        // °´¼ü´¥·¢¹¥»÷¶¯»­£¨Animator Àï Any State -> Attack µÄ Trigger£©
+        // æ”»å‡»è§¦å‘å™¨ï¼Œç”¨äº Any State -> Attack
         if (Input.GetKeyDown(attackKey))
             animator.SetTrigger(attackTriggerParam);
 
-        // ¿ÉÑ¡£º°´¼ü´¥·¢·­¹ö¶¯»­£¨Èç¹ûÄã×öÁË Roll ×´Ì¬/Trigger£©
+        // é—ªé¿è§¦å‘å™¨ï¼ˆå¦‚æœå¯ç”¨ï¼‰
         if (enableRollTrigger && Input.GetKeyDown(dodgeKey))
             animator.SetTrigger(rollTriggerParam);
     }

@@ -16,16 +16,13 @@ public class ChaseEnemy2D : MonoBehaviour
     void Awake()
     {
         _rb = GetComponent<Rigidbody2D>();
-        if (target == null && Camera.main != null)
-        {
-            var p = GameObject.FindGameObjectWithTag("Player");
-            if (p != null)
-                target = p.transform;
-        }
+        TryFindPlayerTarget();
     }
 
     void FixedUpdate()
     {
+        TryFindPlayerTarget();
+
         if (target == null)
             return;
 
@@ -45,5 +42,15 @@ public class ChaseEnemy2D : MonoBehaviour
             s.x = Mathf.Abs(s.x) * dir;
             transform.localScale = s;
         }
+    }
+
+    void TryFindPlayerTarget()
+    {
+        if (target != null)
+            return;
+
+        var p = GameObject.FindGameObjectWithTag("Player");
+        if (p != null)
+            target = p.transform;
     }
 }

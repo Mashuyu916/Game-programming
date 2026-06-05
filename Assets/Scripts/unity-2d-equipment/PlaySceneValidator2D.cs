@@ -14,7 +14,7 @@ public static class PlaySceneValidator2D
         if (scene.name == "SampleScene")
         {
             Debug.LogError(
-                "当前运行的是 SampleScene（几乎是空场景）！请打开 Assets/1.unity 再点 Play。");
+                "Play mode is running SampleScene, which is nearly empty. Open Assets/1.unity before pressing Play.");
             return;
         }
 
@@ -22,8 +22,8 @@ public static class PlaySceneValidator2D
         if (walk == null)
         {
             Debug.LogWarning(
-                $"场景里没有 {PlatformTilemapLayers2D.DefaultWalkableTilemapName}。" +
-                "请在 Unity 菜单执行：Tools → Platformer → 设置自画地图（背景 + 隐形可踩层）。");
+                $"Scene is missing Grid/{PlatformTilemapLayers2D.DefaultWalkableTilemapName}. " +
+                "Run Tools > Platformer > Setup Custom Tilemaps (background + invisible walk layer).");
             return;
         }
 
@@ -41,8 +41,8 @@ public static class PlaySceneValidator2D
         if (count == 0)
         {
             Debug.LogWarning(
-                $"「{PlatformTilemapLayers2D.DefaultWalkableTilemapName}」上还没有隐形砖。" +
-                "用 Tile Palette 选 InvisibleWalk，在可踩位置自己画（看不见，但有碰撞）。");
+                $"{PlatformTilemapLayers2D.DefaultWalkableTilemapName} has no invisible walk tiles. " +
+                "Use the Tile Palette to paint InvisibleWalk tiles on walkable positions.");
         }
     }
 }

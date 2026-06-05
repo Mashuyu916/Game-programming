@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Dead Cells�Cstyle horizontal roll: burst speed + invulnerability.
+/// Dead Cells-style horizontal roll: burst speed + invulnerability.
 /// Requires <see cref="Rigidbody2D"/> and <see cref="PlayerInvincibility"/> on the same object.
 /// Runs after <see cref="PlayerMovement2D"/> so roll velocity wins for that window.
 /// </summary>

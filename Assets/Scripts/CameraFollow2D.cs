@@ -16,8 +16,15 @@ public class CameraFollow2D : MonoBehaviour
     public float smoothSpeed = 0f;
     public bool lockHorizontal;
 
+    void Awake()
+    {
+        TryFindPlayerTarget();
+    }
+
     void LateUpdate()
     {
+        TryFindPlayerTarget();
+
         if (target == null)
             return;
 
@@ -29,5 +36,15 @@ public class CameraFollow2D : MonoBehaviour
             transform.position = desired;
         else
             transform.position = Vector3.Lerp(transform.position, desired, smoothSpeed * Time.deltaTime);
+    }
+
+    void TryFindPlayerTarget()
+    {
+        if (target != null)
+            return;
+
+        var player = GameObject.FindGameObjectWithTag("Player");
+        if (player != null)
+            target = player.transform;
     }
 }

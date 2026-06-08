@@ -168,6 +168,22 @@ public class EndlessRunner2D : MonoBehaviour
 
     void LoadCuratedPaletteSprites()
     {
+        var loadedSprites = Resources.FindObjectsOfTypeAll<Sprite>();
+        AddNamedSprites(loadedSprites, _surfaceSprites, "Tiles_0", "Tiles_1", "Tiles_3", "Tiles_9", "Tiles_10", "Tiles_25");
+        AddNamedSprites(loadedSprites, _fillSprites, "Tiles_2", "Tiles_5", "Tiles_8", "Tiles_17", "Tiles_20", "Tiles_21", "Tiles_22", "Tiles_24");
+        AddNamedSprites(loadedSprites, _decorationSprites, "Tiles_11", "Tiles_12", "Tiles_13", "Tiles_14", "Tiles_15", "Tiles_16", "Tiles_23");
+        AddNamedSprites(loadedSprites, _obstacleSprites, "Tiles_6", "Tiles_7", "Tiles_18", "Tiles_19");
+
+        foreach (var sprite in loadedSprites)
+        {
+            if (sprite == null || sprite.texture == null)
+                continue;
+            if (_skySprite == null && sprite.texture.name == "Background")
+                _skySprite = sprite;
+            if (_forestSprite == null && sprite.texture.name == "Background 1")
+                _forestSprite = sprite;
+        }
+
 #if UNITY_EDITOR
         var sprites = AssetDatabase.LoadAllAssetsAtPath("Assets/Art/Tiles.png");
         AddNamedSprites(sprites, _surfaceSprites, "Tiles_0", "Tiles_1", "Tiles_3", "Tiles_9", "Tiles_10", "Tiles_25");
@@ -180,7 +196,6 @@ public class EndlessRunner2D : MonoBehaviour
 #endif
     }
 
-#if UNITY_EDITOR
     static void AddNamedSprites(Object[] assets, List<Sprite> target, params string[] names)
     {
         foreach (string name in names)
@@ -196,7 +211,6 @@ public class EndlessRunner2D : MonoBehaviour
             }
         }
     }
-#endif
 
     void EnsurePaletteFallbacks()
     {

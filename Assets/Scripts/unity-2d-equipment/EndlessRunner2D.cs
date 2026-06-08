@@ -3,6 +3,9 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Tilemaps;
 using UnityEngine.UI;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 /// <summary>
 /// Replaces the old static gameplay map with recycled runner segments.
@@ -27,9 +30,9 @@ public class EndlessRunner2D : MonoBehaviour
 
     [Header("Mode")]
     public RunnerMode mode = RunnerMode.Normal;
-    [Range(0f, 1f)] public float obstacleChance = 0.62f;
-    [Range(0f, 1f)] public float bonusPlatformChance = 0.38f;
-    [Range(0f, 1f)] public float gapChance = 0.24f;
+    [Range(0f, 1f)] public float obstacleChance = 0.38f;
+    [Range(0f, 1f)] public float bonusPlatformChance = 0.16f;
+    [Range(0f, 1f)] public float gapChance = 0.2f;
 
     [Header("Track")]
     public float groundTop = -7.1f;
@@ -40,20 +43,29 @@ public class EndlessRunner2D : MonoBehaviour
     public float terrainMinTop = -7.45f;
     public float terrainMaxTop = -6.25f;
     public int groundFillRows = 4;
+    public float mainGroundDepth = 3.8f;
 
     [Header("Natural Details")]
     [Range(0f, 1f)] public float decorationChance = 0.72f;
     public int maxDecorationsPerSegment = 4;
+    public bool createRunnerBackground = true;
 
     [Header("Legacy Scene Cleanup")]
     public string legacyGridName = "Grid";
     public bool removeLegacyChaseEnemies = true;
+    public bool disableLegacyPlayerActions = true;
 
     [Header("Score")]
     public int scorePerSecond = 10;
 
     readonly List<Transform> _segments = new List<Transform>();
     readonly List<Sprite> _tileSprites = new List<Sprite>();
+    readonly List<Sprite> _surfaceSprites = new List<Sprite>();
+    readonly List<Sprite> _fillSprites = new List<Sprite>();
+    readonly List<Sprite> _decorationSprites = new List<Sprite>();
+    readonly List<Sprite> _obstacleSprites = new List<Sprite>();
+    Sprite _skySprite;
+    Sprite _forestSprite;
     Transform _player;
     Rigidbody2D _playerBody;
     PlayerAnimatorBridge _playerAnimator;
@@ -80,9 +92,12 @@ public class EndlessRunner2D : MonoBehaviour
     {
         ApplyModeSettings();
         _platformLayer = LayerMask.NameToLayer(PlayerMovement2D.PlatformLayerName);
+        LoadCuratedPaletteSprites();
         HarvestTileSprites();
+        EnsurePaletteFallbacks();
         RemoveOldStaticLevel();
         ConfigurePlayerAndCamera();
+        CreateBackground();
         CreateHud();
 
         _currentTerrainTop = groundTop;
@@ -143,12 +158,77 @@ public class EndlessRunner2D : MonoBehaviour
                 if (sprite != null && sprite.texture != null &&
                     sprite.texture.name.Contains("InvisibleWalk"))
                     continue;
-                if (sprite != null && seen.Add(sprite))
+                if (sprite != null && seen.Add(sprite) && !IsWoodLikeSprite(sprite))
                     _tileSprites.Add(sprite);
                 if (_tileSprites.Count >= 24)
                     return;
             }
         }
+    }
+
+    void LoadCuratedPaletteSprites()
+    {
+#if UNITY_EDITOR
+        var sprites = AssetDatabase.LoadAllAssetsAtPath("Assets/Art/Tiles.png");
+        AddNamedSprites(sprites, _surfaceSprites, "Tiles_0", "Tiles_1", "Tiles_3", "Tiles_9", "Tiles_10", "Tiles_25");
+        AddNamedSprites(sprites, _fillSprites, "Tiles_2", "Tiles_5", "Tiles_8", "Tiles_17", "Tiles_20", "Tiles_21", "Tiles_22", "Tiles_24");
+        AddNamedSprites(sprites, _decorationSprites, "Tiles_11", "Tiles_12", "Tiles_13", "Tiles_14", "Tiles_15", "Tiles_16", "Tiles_23");
+        AddNamedSprites(sprites, _obstacleSprites, "Tiles_6", "Tiles_7", "Tiles_18", "Tiles_19");
+
+        _skySprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Art/Background/Background.png");
+        _forestSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Art/Background/Background 1.png");
+#endif
+    }
+
+#if UNITY_EDITOR
+    static void AddNamedSprites(Object[] assets, List<Sprite> target, params string[] names)
+    {
+        foreach (string name in names)
+        {
+            foreach (var asset in assets)
+            {
+                var sprite = asset as Sprite;
+                if (sprite != null && sprite.name == name && !target.Contains(sprite))
+                {
+                    target.Add(sprite);
+                    break;
+                }
+            }
+        }
+    }
+#endif
+
+    void EnsurePaletteFallbacks()
+    {
+        if (_surfaceSprites.Count == 0)
+            AddFallbackSprites(_surfaceSprites, 0, 6);
+        if (_fillSprites.Count == 0)
+            AddFallbackSprites(_fillSprites, 6, 8);
+        if (_decorationSprites.Count == 0)
+            AddFallbackSprites(_decorationSprites, 12, 8);
+        if (_obstacleSprites.Count == 0)
+            AddFallbackSprites(_obstacleSprites, 4, 4);
+    }
+
+    void AddFallbackSprites(List<Sprite> target, int start, int count)
+    {
+        if (_tileSprites.Count == 0)
+            return;
+
+        for (int i = 0; i < count; i++)
+        {
+            var sprite = _tileSprites[(start + i) % _tileSprites.Count];
+            if (!target.Contains(sprite))
+                target.Add(sprite);
+        }
+    }
+
+    bool IsWoodLikeSprite(Sprite sprite)
+    {
+        if (sprite == null)
+            return false;
+        string name = sprite.name.ToLowerInvariant();
+        return name.Contains("wood") || name.Contains("plank");
     }
 
     void RemoveOldStaticLevel()
@@ -190,6 +270,16 @@ public class EndlessRunner2D : MonoBehaviour
         if (movement != null)
             movement.endlessRunnerMode = true;
 
+        if (disableLegacyPlayerActions)
+        {
+            var combat = player.GetComponent<PlayerEquipmentCombat>();
+            if (combat != null)
+                combat.enabled = false;
+            var dodge = player.GetComponent<PlayerDodge2D>();
+            if (dodge != null)
+                dodge.enabled = false;
+        }
+
         _playerAnimator = player.GetComponent<PlayerAnimatorBridge>();
         if (_playerAnimator != null)
         {
@@ -204,6 +294,40 @@ public class EndlessRunner2D : MonoBehaviour
         var follow = camera.GetComponent<CameraFollow2D>();
         if (follow != null)
             follow.lockHorizontal = true;
+
+        camera.backgroundColor = new Color(0.58f, 0.82f, 0.84f);
+    }
+
+    void CreateBackground()
+    {
+        if (!createRunnerBackground || GameObject.Find("RunnerBackground") != null)
+            return;
+
+        var camera = Camera.main;
+        if (camera == null)
+            return;
+
+        var root = new GameObject("RunnerBackground");
+        root.transform.SetParent(camera.transform, false);
+        root.transform.localPosition = new Vector3(0f, 0f, 10f);
+
+        if (_skySprite != null)
+            CreateBackgroundLayer(root.transform, _skySprite, "Sky", new Vector3(0f, 0.4f, 0f), 5.9f, -100);
+        if (_forestSprite != null)
+            CreateBackgroundLayer(root.transform, _forestSprite, "Forest", new Vector3(0f, -1.65f, 0.1f), 3.25f, -90);
+    }
+
+    void CreateBackgroundLayer(Transform parent, Sprite sprite, string layerName, Vector3 localPosition, float scale, int sortingOrder)
+    {
+        var layer = new GameObject(layerName);
+        layer.transform.SetParent(parent, false);
+        layer.transform.localPosition = localPosition;
+        layer.transform.localScale = new Vector3(scale, scale, 1f);
+
+        var renderer = layer.AddComponent<SpriteRenderer>();
+        renderer.sprite = sprite;
+        renderer.sortingLayerName = "Default";
+        renderer.sortingOrder = sortingOrder;
     }
 
     void CreateSegment()
@@ -356,7 +480,7 @@ public class EndlessRunner2D : MonoBehaviour
         _hudText.text = string.Format("TIME {0:00}:{1:00}\nSCORE {2:000000}", minutes, seconds, score);
     }
 
-    void CreatePlatform(Transform segment, Vector2 localOffset, float width, float top)
+    void CreatePlatform(Transform segment, Vector2 localOffset, float width, float top, float visualDepth = -1f)
     {
         var platform = new GameObject("Platform");
         platform.layer = _platformLayer;
@@ -366,38 +490,29 @@ public class EndlessRunner2D : MonoBehaviour
         var collider = platform.AddComponent<BoxCollider2D>();
         collider.size = new Vector2(width, 1f);
 
-        int tileCount = Mathf.CeilToInt(width);
-        for (int i = 0; i < tileCount; i++)
-        {
-            float x = -width * 0.5f + 0.5f + i;
-            CreateTileVisual(platform.transform, new Vector3(x, 0.52f, 0f), i, 1.05f, 0);
+        float depth = visualDepth > 0f ? visualDepth : Mathf.Lerp(1.25f, mainGroundDepth, Mathf.InverseLerp(2.4f, segmentWidth, width));
+        var surface = PickSprite(_surfaceSprites, _builtSegments + Mathf.RoundToInt(width * 10f));
+        if (surface != null)
+            CreateSpriteVisual(platform.transform, surface, new Vector3(0f, 0.58f - depth * 0.5f, 0f), width, depth, 0);
 
-            int fillRows = Mathf.Max(1, groundFillRows);
-            for (int row = 1; row <= fillRows; row++)
-            {
-                float fillX = x + Random.Range(-0.04f, 0.04f);
-                float fillY = 0.52f - row;
-                int spriteIndex = i + row * 5 + _builtSegments;
-                float size = Random.Range(0.94f, 1.08f);
-                CreateTileVisual(platform.transform, new Vector3(fillX, fillY, 0f), spriteIndex, size, -row);
-            }
+        if (width > 2.8f)
+        {
+            var fill = PickSprite(_fillSprites, _builtSegments + Mathf.RoundToInt(localOffset.x * 10f));
+            if (fill != null)
+                CreateSpriteVisual(platform.transform, fill, new Vector3(0f, -0.1f - depth * 0.5f, 0f), width * 0.96f, depth * 0.82f, -1);
         }
     }
 
     void CreateFloatingPlatform(Transform segment, float localX, float width, float top)
     {
-        CreatePlatform(segment, new Vector2(localX, 0f), width, top);
+        CreatePlatform(segment, new Vector2(localX, 0f), width, top, 1.05f);
 
-        int supports = Random.Range(1, 3);
-        for (int i = 0; i < supports; i++)
+        if (Random.value < 0.45f)
         {
-            float supportX = localX + Random.Range(-width * 0.35f, width * 0.35f);
-            int stack = Random.Range(1, 3);
-            for (int row = 0; row < stack; row++)
-            {
-                CreateTileVisual(segment, new Vector3(supportX, top - 1.25f - row * 0.75f, 0f),
-                    _builtSegments + row + i * 3, Random.Range(0.55f, 0.78f), -2);
-            }
+            var stone = PickSprite(_fillSprites, _builtSegments + 5);
+            if (stone != null)
+                CreateSpriteVisual(segment, stone, new Vector3(localX + Random.Range(-width * 0.2f, width * 0.2f), top - 1.35f, 0f),
+                    width * Random.Range(0.35f, 0.55f), Random.Range(0.75f, 1.15f), -2);
         }
     }
 
@@ -411,8 +526,9 @@ public class EndlessRunner2D : MonoBehaviour
         var collider = obstacle.AddComponent<BoxCollider2D>();
         collider.size = new Vector2(0.8f, 1.15f);
 
-        CreateTileVisual(obstacle.transform, new Vector3(-0.12f, -0.05f, 0f), _builtSegments + 3, 0.82f, 1);
-        CreateTileVisual(obstacle.transform, new Vector3(0.16f, 0.2f, 0f), _builtSegments + 8, 0.62f, 2);
+        var obstacleSprite = PickSprite(_obstacleSprites, _builtSegments + 3);
+        if (obstacleSprite != null)
+            CreateSpriteVisual(obstacle.transform, obstacleSprite, Vector3.zero, 0.95f, 1.1f, 2);
     }
 
     void CreateDecorations(Transform segment, float top, bool hasGap)
@@ -426,8 +542,8 @@ public class EndlessRunner2D : MonoBehaviour
 
             float size = Random.Range(0.28f, 0.52f);
             float y = top + Random.Range(0.12f, 0.2f);
-            int spriteIndex = _builtSegments + i * 7 + Random.Range(0, 8);
-            var visual = CreateTileVisual(segment, new Vector3(x, y, 0f), spriteIndex, size, 2);
+            var decoration = PickSprite(_decorationSprites, _builtSegments + i * 7 + Random.Range(0, 8));
+            var visual = decoration == null ? null : CreateSpriteVisual(segment, decoration, new Vector3(x, y, 0f), size, size * Random.Range(1.1f, 1.8f), 2);
             if (visual != null)
             {
                 visual.name = "GroundDecoration";
@@ -444,15 +560,24 @@ public class EndlessRunner2D : MonoBehaviour
         for (int i = 0; i < 3; i++)
         {
             float y = top - 0.75f - i * 0.65f;
-            float size = Random.Range(0.45f, 0.78f);
-            CreateTileVisual(segment, new Vector3(x + Random.Range(-0.18f, 0.18f), y, 0f),
-                _builtSegments + i * 4, size, -1);
+            var stone = PickSprite(_fillSprites, _builtSegments + i * 4);
+            if (stone != null)
+                CreateSpriteVisual(segment, stone, new Vector3(x + Random.Range(-0.18f, 0.18f), y, 0f),
+                    Random.Range(0.55f, 0.9f), Random.Range(0.45f, 0.8f), -1);
         }
     }
 
-    GameObject CreateTileVisual(Transform parent, Vector3 localPosition, int spriteIndex, float targetSize = 1.05f, int sortingOrder = 0)
+    Sprite PickSprite(List<Sprite> sprites, int index)
     {
-        if (_tileSprites.Count == 0)
+        if (sprites == null || sprites.Count == 0)
+            return null;
+
+        return sprites[Mathf.Abs(index) % sprites.Count];
+    }
+
+    GameObject CreateSpriteVisual(Transform parent, Sprite sprite, Vector3 localPosition, float targetWidth, float targetHeight, int sortingOrder)
+    {
+        if (sprite == null)
             return null;
 
         var visual = new GameObject("TileVisual");
@@ -460,13 +585,15 @@ public class EndlessRunner2D : MonoBehaviour
         visual.transform.localPosition = localPosition;
 
         var renderer = visual.AddComponent<SpriteRenderer>();
-        renderer.sprite = _tileSprites[Mathf.Abs(spriteIndex) % _tileSprites.Count];
+        renderer.sprite = sprite;
         renderer.sortingLayerName = "Default";
         renderer.sortingOrder = sortingOrder;
 
         Vector2 spriteSize = renderer.sprite.bounds.size;
-        float scale = targetSize / Mathf.Max(0.01f, Mathf.Max(spriteSize.x, spriteSize.y));
-        visual.transform.localScale = new Vector3(scale, scale, 1f);
+        visual.transform.localScale = new Vector3(
+            targetWidth / Mathf.Max(0.01f, spriteSize.x),
+            targetHeight / Mathf.Max(0.01f, spriteSize.y),
+            1f);
         return visual;
     }
 }

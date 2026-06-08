@@ -21,6 +21,7 @@ public class PlayerDodge2D : MonoBehaviour
 
     Rigidbody2D _rb;
     PlayerInvincibility _invuln;
+    PlayerAnimatorBridge _animatorBridge;
     float _rollUntil;
     float _cooldownUntil;
     float _facingSign = 1f;
@@ -33,6 +34,9 @@ public class PlayerDodge2D : MonoBehaviour
         _invuln = GetComponent<PlayerInvincibility>();
         if (_invuln == null)
             _invuln = gameObject.AddComponent<PlayerInvincibility>();
+        _animatorBridge = GetComponent<PlayerAnimatorBridge>();
+        if (_animatorBridge == null)
+            _animatorBridge = GetComponentInParent<PlayerAnimatorBridge>();
     }
 
     void Update()
@@ -51,6 +55,8 @@ public class PlayerDodge2D : MonoBehaviour
         _rollUntil = Time.time + rollDuration;
         _cooldownUntil = Time.time + cooldown;
         _invuln.AddSeconds(invulnerabilityDuration);
+        if (_animatorBridge != null)
+            _animatorBridge.TriggerRoll();
     }
 
     void FixedUpdate()

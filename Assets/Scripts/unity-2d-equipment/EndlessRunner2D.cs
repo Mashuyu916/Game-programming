@@ -45,6 +45,11 @@ public class EndlessRunner2D : MonoBehaviour
     [Range(0f, 1f)] public float decorationChance = 0.72f;
     public int maxDecorationsPerSegment = 4;
 
+
+    [Header("Legacy Scene Cleanup")]
+    public string legacyGridName = "Grid";
+    public bool removeLegacyChaseEnemies = true;
+
     [Header("Score")]
     public int scorePerSecond = 10;
 
@@ -149,20 +154,26 @@ public class EndlessRunner2D : MonoBehaviour
 
     void RemoveOldStaticLevel()
     {
-        var grid = GameObject.Find("Grid");
-        if (grid != null)
+        var activeScene = SceneManager.GetActiveScene();
+        var grid = GameObject.Find(legacyGridName);
+        if (grid != null && grid.scene == activeScene && grid.GetComponent<Grid>() != null)
         {
             grid.SetActive(false);
             Destroy(grid);
         }
 
-        foreach (var enemy in GameObject.FindGameObjectsWithTag("Untagged"))
+        if (!removeLegacyChaseEnemies)
+            return;
+
+        foreach (var enemy in FindObjectsOfType<ChaseEnemy2D>(true))
         {
-            if (enemy.name == "Enemy")
-            {
-                enemy.SetActive(false);
-                Destroy(enemy);
-            }
+            if (enemy == null || enemy.gameObject.scene != activeScene)
+                continue;
+            if (enemy.GetComponentInParent<EndlessRunner2D>() != null)
+                continue;
+
+            enemy.gameObject.SetActive(false);
+            Destroy(enemy.gameObject);
         }
     }
 
@@ -218,6 +229,12 @@ public class EndlessRunner2D : MonoBehaviour
         float top = NextTerrainTop(index);
         bool canMakeGap = index > 4 && !_lastSegmentHadGap && Random.value < gapChance;
 
+
+        if (canMakeGap)
+            CreateGapSegment(segment, top);
+        else
+            CreatePlatform(segment, Vector2.zero, segmentWidth, top);
+
         if (canMakeGap)
             CreateGapSegment(segment, top);
         else
@@ -234,6 +251,7 @@ public class EndlessRunner2D : MonoBehaviour
             float width = Random.Range(2f, 3.5f);
             float x = Random.Range(-segmentWidth * 0.25f, segmentWidth * 0.25f);
             CreateFloatingPlatform(segment, x, width, top + Random.Range(2.1f, 2.8f));
+
         }
 
         if (Random.value < decorationChance)
@@ -296,6 +314,115 @@ public class EndlessRunner2D : MonoBehaviour
                 decorationChance = 0.62f;
                 break;
         }
+
+        if (Random.value < decorationChance)
+            CreateDecorations(segment, top, canMakeGap);
+
+        _lastSegmentHadGap = canMakeGap;
+    }
+
+    float NextTerrainTop(int index)
+    {
+        if (index < 4)
+            return groundTop;
+
+        float step = Random.Range(-terrainHeightStep, terrainHeightStep);
+        if (Random.value < 0.35f)
+            step = 0f;
+
+        _currentTerrainTop = Mathf.Clamp(_currentTerrainTop + step, terrainMinTop, terrainMaxTop);
+        return _currentTerrainTop;
+    }
+
+    void CreateGapSegment(Transform segment, float top)
+    {
+        float gapWidth = Random.Range(1.7f, 2.35f);
+        float gapCenter = Random.Range(-0.8f, 0.8f);
+        float leftEdge = -segmentWidth * 0.5f;
+        float rightEdge = segmentWidth * 0.5f;
+        float gapLeft = gapCenter - gapWidth * 0.5f;
+        float gapRight = gapCenter + gapWidth * 0.5f;
+
+        float leftWidth = Mathf.Max(1.25f, gapLeft - leftEdge);
+        float rightWidth = Mathf.Max(1.25f, rightEdge - gapRight);
+        CreatePlatform(segment, new Vector2(leftEdge + leftWidth * 0.5f, 0f), leftWidth, top);
+        CreatePlatform(segment, new Vector2(gapRight + rightWidth * 0.5f, 0f), rightWidth, top);
+
+        CreateDropDecoration(segment, gapLeft, top);
+        CreateDropDecoration(segment, gapRight, top);
+    }
+
+    void ApplyModeSettings()
+    {
+        switch (mode)
+        {
+            case RunnerMode.Easy:
+                scrollSpeed = Mathf.Min(scrollSpeed, 5.8f);
+                speedIncreasePerSecond = 0.02f;
+                maximumSpeed = 8.5f;
+                obstacleChance = 0.4f;
+                bonusPlatformChance = 0.45f;
+                gapChance = 0.14f;
+                decorationChance = 0.84f;
+                break;
+            case RunnerMode.Hard:
+                scrollSpeed = Mathf.Max(scrollSpeed, 7.3f);
+                speedIncreasePerSecond = 0.055f;
+                maximumSpeed = 13f;
+                obstacleChance = 0.72f;
+                bonusPlatformChance = 0.26f;
+                gapChance = 0.32f;
+                decorationChance = 0.62f;
+                break;
+        }
+    }
+
+    void CreateHud()
+    {
+        if (GameObject.Find("RunnerHud") != null)
+            return;
+
+        var canvasGO = new GameObject("RunnerHud");
+        var canvas = canvasGO.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 100;
+
+        var scaler = canvasGO.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
+        canvasGO.AddComponent<GraphicRaycaster>();
+
+        var textGO = new GameObject("TimerScoreText");
+        textGO.transform.SetParent(canvasGO.transform, false);
+        _hudText = textGO.AddComponent<Text>();
+        _hudText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        _hudText.fontSize = 34;
+        _hudText.alignment = TextAnchor.UpperRight;
+        _hudText.color = Color.white;
+        _hudText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        _hudText.verticalOverflow = VerticalWrapMode.Overflow;
+
+        var rect = _hudText.rectTransform;
+        rect.anchorMin = new Vector2(1f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(1f, 1f);
+        rect.anchoredPosition = new Vector2(-36f, -28f);
+        rect.sizeDelta = new Vector2(420f, 120f);
+
+        UpdateHud();
+    }
+
+    void UpdateHud()
+    {
+        if (_hudText == null)
+            return;
+
+        int totalSeconds = Mathf.FloorToInt(_elapsedSeconds);
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+        int score = Mathf.FloorToInt(_elapsedSeconds * scorePerSecond);
+        _hudText.text = string.Format("TIME {0:00}:{1:00}\nSCORE {2:000000}", minutes, seconds, score);
     }
 
     void CreateHud()

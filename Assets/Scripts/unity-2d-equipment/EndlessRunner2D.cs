@@ -15,6 +15,7 @@ using UnityEditor;
 public class EndlessRunner2D : MonoBehaviour
 {
     const string GameplayScene = "1";
+    static EndlessRunner2D _activeRunner;
 
     public enum RunnerMode
     {
@@ -74,6 +75,7 @@ public class EndlessRunner2D : MonoBehaviour
     float _nextX;
     float _elapsedSeconds;
     float _currentTerrainTop;
+    float _startingScrollSpeed;
     bool _lastSegmentHadGap;
     int _builtSegments;
 
@@ -90,7 +92,9 @@ public class EndlessRunner2D : MonoBehaviour
 
     void Awake()
     {
+        _activeRunner = this;
         ApplyModeSettings();
+        _startingScrollSpeed = scrollSpeed;
         _platformLayer = LayerMask.NameToLayer(PlayerMovement2D.PlatformLayerName);
         LoadCuratedPaletteSprites();
         HarvestTileSprites();
@@ -104,6 +108,21 @@ public class EndlessRunner2D : MonoBehaviour
         _nextX = -12f;
         for (int i = 0; i < segmentCount; i++)
             CreateSegment();
+    }
+
+    void OnDestroy()
+    {
+        if (_activeRunner == this)
+            _activeRunner = null;
+    }
+
+    public static bool TryRestartActiveRunner()
+    {
+        if (_activeRunner == null)
+            return false;
+
+        _activeRunner.RestartRunner();
+        return true;
     }
 
     void Update()
@@ -141,7 +160,44 @@ public class EndlessRunner2D : MonoBehaviour
         }
 
         if (_player != null && _player.position.y < groundTop - 5f)
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            RestartRunner();
+    }
+
+    void RestartRunner()
+    {
+        scrollSpeed = _startingScrollSpeed;
+        _elapsedSeconds = 0f;
+        _builtSegments = 0;
+        _lastSegmentHadGap = false;
+        _currentTerrainTop = groundTop;
+
+        for (int i = _segments.Count - 1; i >= 0; i--)
+        {
+            if (_segments[i] != null)
+            {
+                _segments[i].gameObject.SetActive(false);
+                Destroy(_segments[i].gameObject);
+            }
+        }
+        _segments.Clear();
+
+        ConfigurePlayerAndCamera();
+        if (_playerBody != null)
+        {
+            _playerBody.position = new Vector2(-3f, groundTop + 0.65f);
+            _playerBody.velocity = Vector2.zero;
+            _playerBody.angularVelocity = 0f;
+        }
+        else if (_player != null)
+        {
+            _player.position = new Vector3(-3f, groundTop + 0.65f, 0f);
+        }
+
+        _nextX = -12f;
+        for (int i = 0; i < segmentCount; i++)
+            CreateSegment();
+
+        UpdateHud();
     }
 
     void HarvestTileSprites()

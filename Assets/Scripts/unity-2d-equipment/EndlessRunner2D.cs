@@ -3,9 +3,11 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Tilemaps;
 using UnityEngine.UI;
+
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
+
 
 /// <summary>
 /// Replaces the old static gameplay map with recycled runner segments.
@@ -24,6 +26,13 @@ public class EndlessRunner2D : MonoBehaviour
         Hard
     }
 
+    public enum RunnerMode
+    {
+        Easy,
+        Normal,
+        Hard
+    }
+
     [Header("Scroll")]
     public float scrollSpeed = 6.5f;
     public float speedIncreasePerSecond = 0.035f;
@@ -31,9 +40,15 @@ public class EndlessRunner2D : MonoBehaviour
 
     [Header("Mode")]
     public RunnerMode mode = RunnerMode.Normal;
+
     [Range(0f, 1f)] public float obstacleChance = 0.38f;
     [Range(0f, 1f)] public float bonusPlatformChance = 0.16f;
     [Range(0f, 1f)] public float gapChance = 0.2f;
+
+    [Range(0f, 1f)] public float obstacleChance = 0.62f;
+    [Range(0f, 1f)] public float bonusPlatformChance = 0.38f;
+    [Range(0f, 1f)] public float gapChance = 0.24f;
+
 
     [Header("Track")]
     public float groundTop = -7.1f;
@@ -44,17 +59,22 @@ public class EndlessRunner2D : MonoBehaviour
     public float terrainMinTop = -7.45f;
     public float terrainMaxTop = -6.25f;
     public int groundFillRows = 4;
+
     public float mainGroundDepth = 3.8f;
+
 
     [Header("Natural Details")]
     [Range(0f, 1f)] public float decorationChance = 0.72f;
     public int maxDecorationsPerSegment = 4;
+
     public bool createRunnerBackground = true;
 
     [Header("Legacy Scene Cleanup")]
     public string legacyGridName = "Grid";
     public bool removeLegacyChaseEnemies = true;
     public bool disableLegacyPlayerActions = true;
+
+
 
     [Header("Score")]
     public int scorePerSecond = 10;

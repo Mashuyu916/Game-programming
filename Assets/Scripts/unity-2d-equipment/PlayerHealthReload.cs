@@ -34,6 +34,12 @@ public class PlayerHealthReload : MonoBehaviour, IDamageable
 
         if (_hp <= 0f)
         {
+            _hp = maxHealth;
+            _invuln.Clear();
+
+            if (EndlessRunner2D.TryRestartActiveRunner())
+                return;
+
             if (string.IsNullOrEmpty(sceneToLoad))
                 SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
             else

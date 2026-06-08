@@ -16,4 +16,9 @@ public class PlayerInvincibility : MonoBehaviour
             return;
         _invulnUntil = Mathf.Max(_invulnUntil, Time.time + seconds);
     }
+
+    public void Clear()
+    {
+        _invulnUntil = 0f;
+    }
 }

@@ -24,6 +24,14 @@ public class PlayerEquipmentCombat : MonoBehaviour
     public SpriteRenderer facingVisual;
 
     float _cooldownUntil;
+    PlayerAnimatorBridge _animatorBridge;
+
+    void Awake()
+    {
+        _animatorBridge = GetComponent<PlayerAnimatorBridge>();
+        if (_animatorBridge == null)
+            _animatorBridge = GetComponentInParent<PlayerAnimatorBridge>();
+    }
 
     void Update()
     {
@@ -38,6 +46,8 @@ public class PlayerEquipmentCombat : MonoBehaviour
 
         SpawnHitbox(mainWeapon);
         _cooldownUntil = Time.time + mainWeapon.cooldown;
+        if (_animatorBridge != null)
+            _animatorBridge.TriggerAttack();
     }
 
     void SpawnHitbox(WeaponData weapon)

@@ -43,13 +43,21 @@ public class PlayerAnimatorBridge : MonoBehaviour
         // 设置横向速度，驱动 Idle / Run 动画
         float visualSpeed = endlessRunnerMode ? endlessRunnerVisualSpeed : Mathf.Abs(rb.velocity.x);
         animator.SetFloat(speedParam, visualSpeed, speedDampTime, Time.deltaTime);
+    }
 
-        // 攻击触发器，用于 Any State -> Attack
-        if (Input.GetKeyDown(attackKey))
-            animator.SetTrigger(attackTriggerParam);
+    public void TriggerAttack()
+    {
+        if (animator == null)
+            return;
 
-        // 闪避触发器（如果启用）
-        if (enableRollTrigger && Input.GetKeyDown(dodgeKey))
-            animator.SetTrigger(rollTriggerParam);
+        animator.SetTrigger(attackTriggerParam);
+    }
+
+    public void TriggerRoll()
+    {
+        if (!enableRollTrigger || animator == null)
+            return;
+
+        animator.SetTrigger(rollTriggerParam);
     }
 }

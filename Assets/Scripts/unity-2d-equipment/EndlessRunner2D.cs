@@ -45,6 +45,10 @@ public class EndlessRunner2D : MonoBehaviour
     [Range(0f, 1f)] public float decorationChance = 0.72f;
     public int maxDecorationsPerSegment = 4;
 
+    [Header("Legacy Scene Cleanup")]
+    public string legacyGridName = "Grid";
+    public bool removeLegacyChaseEnemies = true;
+
     [Header("Score")]
     public int scorePerSecond = 10;
 
@@ -149,20 +153,26 @@ public class EndlessRunner2D : MonoBehaviour
 
     void RemoveOldStaticLevel()
     {
-        var grid = GameObject.Find("Grid");
-        if (grid != null)
+        var activeScene = SceneManager.GetActiveScene();
+        var grid = GameObject.Find(legacyGridName);
+        if (grid != null && grid.scene == activeScene && grid.GetComponent<Grid>() != null)
         {
             grid.SetActive(false);
             Destroy(grid);
         }
 
-        foreach (var enemy in GameObject.FindGameObjectsWithTag("Untagged"))
+        if (!removeLegacyChaseEnemies)
+            return;
+
+        foreach (var enemy in FindObjectsOfType<ChaseEnemy2D>(true))
         {
-            if (enemy.name == "Enemy")
-            {
-                enemy.SetActive(false);
-                Destroy(enemy);
-            }
+            if (enemy == null || enemy.gameObject.scene != activeScene)
+                continue;
+            if (enemy.GetComponentInParent<EndlessRunner2D>() != null)
+                continue;
+
+            enemy.gameObject.SetActive(false);
+            Destroy(enemy.gameObject);
         }
     }
 

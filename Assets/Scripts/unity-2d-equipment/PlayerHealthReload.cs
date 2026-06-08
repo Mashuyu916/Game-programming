@@ -1,9 +1,9 @@
+using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Player HP + <see cref="IDamageable"/>. Ignores damage while <see cref="PlayerInvincibility"/> is active.
-/// On death reloads a scene (roguelike restart).
+/// Player health that restarts the active runner or reloads the configured scene on death.
 /// </summary>
 public class PlayerHealthReload : MonoBehaviour, IDamageable
 {
@@ -15,6 +15,9 @@ public class PlayerHealthReload : MonoBehaviour, IDamageable
 
     float _hp;
     PlayerInvincibility _invuln;
+
+    public float CurrentHealth => _hp;
+    public event Action<float, float, float> Damaged;
 
     void Awake()
     {
@@ -29,21 +32,30 @@ public class PlayerHealthReload : MonoBehaviour, IDamageable
         if (_invuln.IsInvincible)
             return;
 
-        _hp -= amount;
+        _hp = Mathf.Max(0f, _hp - amount);
         _invuln.AddSeconds(hitInvulnerabilitySeconds);
+        Damaged?.Invoke(amount, _hp, maxHealth);
 
-        if (_hp <= 0f)
-        {
-            _hp = maxHealth;
-            _invuln.Clear();
+        if (_hp > 0f)
+            return;
 
-            if (EndlessRunner2D.TryRestartActiveRunner())
-                return;
+        _invuln.Clear();
+        string reason = source != null && source.GetComponent<EndlessRunnerObstacle2D>() != null
+            ? "HIT AN OBSTACLE"
+            : "FATAL DAMAGE";
+        if (EndlessRunner2D.TryRestartActiveRunner(reason, source))
+            return;
 
-            if (string.IsNullOrEmpty(sceneToLoad))
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-            else
-                SceneManager.LoadScene(sceneToLoad);
-        }
+        _hp = maxHealth;
+        if (string.IsNullOrEmpty(sceneToLoad))
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        else
+            SceneManager.LoadScene(sceneToLoad);
+    }
+
+    public void RestoreFullHealth()
+    {
+        _hp = maxHealth;
+        _invuln.Clear();
     }
 }

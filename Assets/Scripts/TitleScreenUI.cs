@@ -7,12 +7,12 @@ using UnityEngine.UI;
 public class TitleScreenUI : MonoBehaviour
 {
     [Header("Text")]
-    public string titleText = "迷失之境";
-    public string subtitleText = "踏入未知，开启属于你的冒险";
-    public string startButtonText = "开始游戏";
-    public string quitButtonText = "退出游戏";
+    public string titleText = "ENDLESS RUNNER";
+    public string subtitleText = "Run farther. Jump smarter. Survive longer.";
+    public string startButtonText = "START RUN";
+    public string quitButtonText = "QUIT";
     public string versionText = "DEMO  v1.0";
-    public string footerText = "按 Enter 开始游戏  ·  Esc 退出";
+    public string footerText = "Press Enter to start  |  Esc to quit";
 
     [Header("Scene")]
     public string sceneToLoad = "1";
@@ -338,14 +338,14 @@ public class TitleScreenUI : MonoBehaviour
 
         if (string.IsNullOrEmpty(sceneToLoad))
         {
-            Debug.LogWarning("TitleScreenUI: sceneToLoad 未配置，请在 Inspector 中填写要加载的场景名。");
+            Debug.LogWarning("TitleScreenUI: sceneToLoad is empty. Set a scene name in the Inspector.");
             return;
         }
 
         if (!Application.CanStreamedLevelBeLoaded(sceneToLoad))
         {
-            Debug.LogError("TitleScreenUI: 找不到场景 " + sceneToLoad +
-                "，请确认它已添加到 Build Settings。");
+            Debug.LogError("TitleScreenUI: scene not found: " + sceneToLoad +
+                ". Add it to Build Settings.");
             return;
         }
 
@@ -374,6 +374,6 @@ public class TitleScreenUI : MonoBehaviour
     public void QuitGame()
     {
         Application.Quit();
-        Debug.Log("TitleScreenUI: 退出游戏（编辑器中不会关闭）。");
+        Debug.Log("TitleScreenUI: Quit requested. The Unity Editor will remain open.");
     }
 }

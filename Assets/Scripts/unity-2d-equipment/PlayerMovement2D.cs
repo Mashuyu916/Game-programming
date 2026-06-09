@@ -29,6 +29,10 @@ public class PlayerMovement2D : MonoBehaviour
     public float fallMultiplier = 2.5f;
     public float lowJumpMultiplier = 2f;
 
+    [Header("Pickup Abilities")]
+    public bool requirePickupForDoubleJump = true;
+    public int extraJumpsWithPickup = 1;
+
     [Header("Ground Detection")]
     [Tooltip("Layers counted as ground (platforms / tilemap). Should be the \"platform\" layer.")]
     public LayerMask groundLayer;
@@ -54,6 +58,10 @@ public class PlayerMovement2D : MonoBehaviour
     bool _jumpHeld;
     float _lastGroundedTime;
     bool _isGrounded;
+    float _doubleJumpUntil;
+    int _extraJumpsRemaining;
+
+    public bool HasDoubleJumpAbility => !requirePickupForDoubleJump || Time.time < _doubleJumpUntil;
 
     void Reset()
     {
@@ -107,8 +115,12 @@ public class PlayerMovement2D : MonoBehaviour
             return;
 
         bool grounded = IsGrounded();
+        _isGrounded = grounded;
         if (grounded)
+        {
             _lastGroundedTime = Time.time;
+            _extraJumpsRemaining = HasDoubleJumpAbility ? extraJumpsWithPickup : 0;
+        }
 
         if (_jumpBuffer > 0f)
             _jumpBuffer -= Time.fixedDeltaTime;
@@ -122,10 +134,14 @@ public class PlayerMovement2D : MonoBehaviour
         float accel = Mathf.Abs(targetX) > 0.01f ? acceleration : deceleration;
         velocity.x = Mathf.MoveTowards(velocity.x, targetX, accel * Time.fixedDeltaTime);
 
-        if (_jumpBuffer > 0f && (grounded || Time.time - _lastGroundedTime <= coyoteTime))
+        bool canGroundJump = grounded || Time.time - _lastGroundedTime <= coyoteTime;
+        bool canExtraJump = !canGroundJump && HasDoubleJumpAbility && _extraJumpsRemaining > 0;
+        if (_jumpBuffer > 0f && (canGroundJump || canExtraJump))
         {
             velocity.y = jumpForce;
             _jumpBuffer = 0f;
+            if (canExtraJump)
+                _extraJumpsRemaining--;
         }
 
         if (velocity.y < 0f)
@@ -211,5 +227,18 @@ public class PlayerMovement2D : MonoBehaviour
         Vector3 feet = new Vector3(b.center.x, b.min.y - groundCheckRadius * 0.5f, 0f);
         groundCheck.position = feet;
         groundCheck.localPosition = new Vector3(groundCheck.localPosition.x, groundCheck.localPosition.y, 0f);
+    }
+
+    public void EnableDoubleJumpAbility(float duration)
+    {
+        _doubleJumpUntil = Mathf.Max(_doubleJumpUntil, Time.time + duration);
+        if (!_isGrounded)
+            _extraJumpsRemaining = Mathf.Max(_extraJumpsRemaining, extraJumpsWithPickup);
+    }
+
+    public void ClearDoubleJumpAbility()
+    {
+        _doubleJumpUntil = 0f;
+        _extraJumpsRemaining = 0;
     }
 }

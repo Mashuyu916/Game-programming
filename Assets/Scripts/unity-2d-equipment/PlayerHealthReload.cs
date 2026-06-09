@@ -18,6 +18,7 @@ public class PlayerHealthReload : MonoBehaviour, IDamageable
 
     public float CurrentHealth => _hp;
     public event Action<float, float, float> Damaged;
+    public event Action<float, float, float> Healed;
 
     void Awake()
     {
@@ -57,5 +58,18 @@ public class PlayerHealthReload : MonoBehaviour, IDamageable
     {
         _hp = maxHealth;
         _invuln.Clear();
+        Healed?.Invoke(maxHealth, _hp, maxHealth);
+    }
+
+    public void Heal(float amount)
+    {
+        if (amount <= 0f)
+            return;
+
+        float before = _hp;
+        _hp = Mathf.Min(maxHealth, _hp + amount);
+        float gained = _hp - before;
+        if (gained > 0f)
+            Healed?.Invoke(gained, _hp, maxHealth);
     }
 }

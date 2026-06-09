@@ -27,7 +27,8 @@ public class EndlessRunner2D : MonoBehaviour
 
     [Header("Scroll")]
     public float scrollSpeed = 6.5f;
-    public float speedIncreasePerSecond = 0.035f;
+    public float speedIncreasePerSecond = 0.008f;
+    public float speedIncreasePerMinute = 0.45f;
     public float maximumSpeed = 11f;
 
     [Header("Mode")]
@@ -61,6 +62,14 @@ public class EndlessRunner2D : MonoBehaviour
     public Color deathEffectColor = new Color(1f, 0.24f, 0.16f, 0.9f);
     public Color deathReasonColor = new Color(1f, 0.96f, 0.82f, 1f);
 
+    [Header("Fruit Pickups")]
+    [Range(0f, 1f)] public float highPlatformPickupChance = 0.72f;
+    [Range(0f, 1f)] public float healFruitWeight = 0.58f;
+    [Range(0f, 1f)] public float doubleJumpFruitWeight = 0.25f;
+    public float healFruitAmount = 30f;
+    public float doubleJumpDuration = 14f;
+    public float rollDuration = 12f;
+
     [Header("Legacy Scene Cleanup")]
     public string legacyGridName = "Grid";
     public bool removeLegacyChaseEnemies = true;
@@ -75,6 +84,7 @@ public class EndlessRunner2D : MonoBehaviour
     readonly List<Sprite> _fillSprites = new List<Sprite>();
     readonly List<Sprite> _decorationSprites = new List<Sprite>();
     readonly List<Sprite> _obstacleSprites = new List<Sprite>();
+    readonly List<Sprite> _fruitSprites = new List<Sprite>();
     Sprite _skySprite;
     Sprite _solidSprite;
     Transform _player;
@@ -85,12 +95,15 @@ public class EndlessRunner2D : MonoBehaviour
     Image _healthFillImage;
     Text _healthText;
     Text _damageText;
+    Text _pickupText;
     Coroutine _damageTextRoutine;
+    Coroutine _pickupTextRoutine;
     int _platformLayer;
     float _nextX;
     float _elapsedSeconds;
     float _currentTerrainTop;
     float _startingScrollSpeed;
+    int _speedMinuteLevel;
     bool _lastSegmentHadGap;
     bool _isRestarting;
     int _challengeCooldown;
@@ -130,7 +143,10 @@ public class EndlessRunner2D : MonoBehaviour
     void OnDestroy()
     {
         if (_playerHealth != null)
+        {
             _playerHealth.Damaged -= OnPlayerDamaged;
+            _playerHealth.Healed -= OnPlayerHealed;
+        }
         if (_activeRunner == this)
             _activeRunner = null;
     }
@@ -150,6 +166,12 @@ public class EndlessRunner2D : MonoBehaviour
         return true;
     }
 
+    public static void TryShowPickupMessage(string message)
+    {
+        if (_activeRunner != null)
+            _activeRunner.ShowPickupMessage(message);
+    }
+
     void Update()
     {
         _elapsedSeconds += Time.deltaTime;
@@ -162,6 +184,14 @@ public class EndlessRunner2D : MonoBehaviour
             return;
 
         scrollSpeed = Mathf.Min(maximumSpeed, scrollSpeed + speedIncreasePerSecond * Time.fixedDeltaTime);
+        int elapsedMinutes = Mathf.FloorToInt(_elapsedSeconds / 60f);
+        if (elapsedMinutes > _speedMinuteLevel)
+        {
+            int gainedLevels = elapsedMinutes - _speedMinuteLevel;
+            _speedMinuteLevel = elapsedMinutes;
+            scrollSpeed = Mathf.Min(maximumSpeed, scrollSpeed + speedIncreasePerMinute * gainedLevels);
+            ShowPickupMessage("SPEED UP  LEVEL " + (_speedMinuteLevel + 1));
+        }
         if (_playerAnimator != null)
             _playerAnimator.endlessRunnerVisualSpeed = scrollSpeed;
 
@@ -199,6 +229,7 @@ public class EndlessRunner2D : MonoBehaviour
         _builtSegments = 0;
         _lastSegmentHadGap = false;
         _challengeCooldown = 0;
+        _speedMinuteLevel = 0;
         _currentTerrainTop = groundTop;
 
         for (int i = _segments.Count - 1; i >= 0; i--)
@@ -229,7 +260,22 @@ public class EndlessRunner2D : MonoBehaviour
 
         if (_playerHealth != null)
             _playerHealth.RestoreFullHealth();
+        ResetPickupAbilities();
         UpdateHud();
+    }
+
+    void ResetPickupAbilities()
+    {
+        if (_player == null)
+            return;
+
+        var movement = _player.GetComponent<PlayerMovement2D>();
+        if (movement != null)
+            movement.ClearDoubleJumpAbility();
+
+        var dodge = _player.GetComponent<PlayerDodge2D>();
+        if (dodge != null)
+            dodge.ClearRollAbility();
     }
 
     void BeginDeathRestart(string reason, Vector3 worldPosition, GameObject source)
@@ -287,6 +333,7 @@ public class EndlessRunner2D : MonoBehaviour
         CreateSolidSprite();
         Texture2D tilesTexture = null;
         Texture2D platformTexture = null;
+        Texture2D fruitTexture = null;
         var loadedSprites = Resources.FindObjectsOfTypeAll<Sprite>();
         foreach (var sprite in loadedSprites)
         {
@@ -297,6 +344,8 @@ public class EndlessRunner2D : MonoBehaviour
             }
             if (sprite != null && sprite.texture != null && sprite.texture.name == "platforms")
                 platformTexture = sprite.texture;
+            if (sprite != null && sprite.texture != null && sprite.texture.name == "fruit")
+                fruitTexture = sprite.texture;
         }
 
         AddNamedSprites(loadedSprites, _decorationSprites, "Tiles_11", "Tiles_12", "Tiles_13", "Tiles_14", "Tiles_15", "Tiles_16", "Tiles_23");
@@ -318,6 +367,12 @@ public class EndlessRunner2D : MonoBehaviour
             platformTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(
                 platformTexturePath);
         }
+        if (fruitTexture == null)
+        {
+            const string fruitTexturePath = "Assets/Art/RunnerTiles/brackeys_platformer_assets/sprites/fruit.png";
+            AssetDatabase.ImportAsset(fruitTexturePath);
+            fruitTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(fruitTexturePath);
+        }
         if (tilesTexture == null)
             tilesTexture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Tiles.png");
 
@@ -332,6 +387,8 @@ public class EndlessRunner2D : MonoBehaviour
             BuildPlatformPalette(platformTexture);
         else if (tilesTexture != null)
             BuildSlicedTerrainPalette(tilesTexture);
+        if (fruitTexture != null)
+            BuildFruitPalette(fruitTexture);
     }
 
     void CreateSolidSprite()
@@ -366,6 +423,14 @@ public class EndlessRunner2D : MonoBehaviour
         AddSlices(texture, _surfaceSprites, 0, texture.height - tileSize, tileSize, tileSize, 4);
         AddSlices(texture, _fillSprites, 0, texture.height - tileSize * 2, tileSize, tileSize, 4);
         AddSlices(texture, _fillSprites, 0, texture.height - tileSize * 3, tileSize, tileSize, 4);
+    }
+
+    void BuildFruitPalette(Texture2D texture)
+    {
+        _fruitSprites.Clear();
+
+        int tileSize = 16;
+        AddSlices(texture, _fruitSprites, 0, texture.height - tileSize, tileSize, tileSize, 3);
     }
 
     void AddSlices(Texture2D texture, List<Sprite> target, int startX, int y, int width, int height, int count)
@@ -463,23 +528,33 @@ public class EndlessRunner2D : MonoBehaviour
         AlignPlayerVisualToCollider();
 
         if (_playerHealth != null)
+        {
             _playerHealth.Damaged -= OnPlayerDamaged;
+            _playerHealth.Healed -= OnPlayerHealed;
+        }
         _playerHealth = player.GetComponent<PlayerHealthReload>();
         if (_playerHealth != null)
+        {
             _playerHealth.Damaged += OnPlayerDamaged;
+            _playerHealth.Healed += OnPlayerHealed;
+        }
 
         var movement = player.GetComponent<PlayerMovement2D>();
         if (movement != null)
             movement.endlessRunnerMode = true;
+
+        var dodge = player.GetComponent<PlayerDodge2D>();
+        if (dodge != null)
+        {
+            dodge.enabled = true;
+            dodge.endlessRunnerMode = true;
+        }
 
         if (disableLegacyPlayerActions)
         {
             var combat = player.GetComponent<PlayerEquipmentCombat>();
             if (combat != null)
                 combat.enabled = false;
-            var dodge = player.GetComponent<PlayerDodge2D>();
-            if (dodge != null)
-                dodge.enabled = false;
         }
 
         _playerAnimator = player.GetComponent<PlayerAnimatorBridge>();
@@ -630,18 +705,21 @@ public class EndlessRunner2D : MonoBehaviour
             CreatePlatform(segment, new Vector2(-3.25f, 0f), 1.9f, top);
             CreatePlatform(segment, new Vector2(0.35f, 0f), 1.45f, top + 0.9f, 1.2f);
             CreatePlatform(segment, new Vector2(3.45f, 0f), 1.65f, top + 0.9f, 1.2f);
+            MaybeCreateFruitPickup(segment, 0.35f, top + 0.9f);
         }
         else if (pattern == 1)
         {
             CreatePlatform(segment, new Vector2(-3.35f, 0f), 1.75f, top);
             CreatePlatform(segment, new Vector2(-0.05f, 0f), 1.2f, top + 1.1f, 1.1f);
             CreatePlatform(segment, new Vector2(3.35f, 0f), 1.75f, top + 0.25f, 1.45f);
+            MaybeCreateFruitPickup(segment, -0.05f, top + 1.1f);
         }
         else if (pattern == 2)
         {
             CreatePlatform(segment, new Vector2(-3.35f, 0f), 1.8f, top + 0.45f, 1.35f);
             CreatePlatform(segment, new Vector2(-0.25f, 0f), 1.05f, top + 1.2f, 1.05f);
             CreatePlatform(segment, new Vector2(3.25f, 0f), 1.9f, top, 1.55f);
+            MaybeCreateFruitPickup(segment, -0.25f, top + 1.2f);
         }
         else if (pattern == 3)
         {
@@ -649,6 +727,7 @@ public class EndlessRunner2D : MonoBehaviour
             CreatePlatform(segment, new Vector2(-0.75f, 0f), 1.0f, top + 0.75f, 1.05f);
             CreatePlatform(segment, new Vector2(1.55f, 0f), 1.0f, top + 1.25f, 1.05f);
             CreatePlatform(segment, new Vector2(3.55f, 0f), 1.25f, top + 0.55f, 1.1f);
+            MaybeCreateFruitPickup(segment, 1.55f, top + 1.25f);
         }
         else
         {
@@ -656,6 +735,7 @@ public class EndlessRunner2D : MonoBehaviour
             CreatePlatform(segment, new Vector2(-1.35f, 0f), 0.95f, top + 1.45f, 1.0f);
             CreatePlatform(segment, new Vector2(1.3f, 0f), 1.15f, top + 0.85f, 1.1f);
             CreatePlatform(segment, new Vector2(3.45f, 0f), 1.45f, top, 1.2f);
+            MaybeCreateFruitPickup(segment, -1.35f, top + 1.45f);
         }
     }
 
@@ -696,7 +776,7 @@ public class EndlessRunner2D : MonoBehaviour
         {
             case RunnerMode.Easy:
                 scrollSpeed = Mathf.Min(scrollSpeed, 5.8f);
-                speedIncreasePerSecond = 0.02f;
+                speedIncreasePerSecond = 0.004f;
                 maximumSpeed = 8.5f;
                 obstacleChance = 0.18f;
                 bonusPlatformChance = 0.06f;
@@ -706,7 +786,7 @@ public class EndlessRunner2D : MonoBehaviour
                 break;
             case RunnerMode.Hard:
                 scrollSpeed = Mathf.Max(scrollSpeed, 7.3f);
-                speedIncreasePerSecond = 0.055f;
+                speedIncreasePerSecond = 0.014f;
                 maximumSpeed = 13f;
                 obstacleChance = 0.42f;
                 bonusPlatformChance = 0.12f;
@@ -819,6 +899,22 @@ public class EndlessRunner2D : MonoBehaviour
         damageRect.pivot = new Vector2(0f, 1f);
         damageRect.anchoredPosition = new Vector2(310f, -54f);
         damageRect.sizeDelta = new Vector2(220f, 48f);
+
+        var pickupGO = new GameObject("PickupText");
+        pickupGO.transform.SetParent(parent, false);
+        _pickupText = pickupGO.AddComponent<Text>();
+        _pickupText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        _pickupText.fontSize = 28;
+        _pickupText.alignment = TextAnchor.UpperLeft;
+        _pickupText.color = new Color(1f, 0.92f, 0.25f, 0f);
+        _pickupText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        AddTextOutline(_pickupText, new Color(0f, 0f, 0f, 0.95f), new Vector2(2f, -2f));
+        var pickupRect = _pickupText.rectTransform;
+        pickupRect.anchorMin = new Vector2(0f, 1f);
+        pickupRect.anchorMax = new Vector2(0f, 1f);
+        pickupRect.pivot = new Vector2(0f, 1f);
+        pickupRect.anchoredPosition = new Vector2(36f, -102f);
+        pickupRect.sizeDelta = new Vector2(430f, 46f);
     }
 
     void CreateHudBackdrop(Transform parent, string name, Vector2 anchor, Vector2 anchoredPosition,
@@ -954,6 +1050,38 @@ public class EndlessRunner2D : MonoBehaviour
         _damageTextRoutine = StartCoroutine(ShowDamageText(amount));
     }
 
+    void OnPlayerHealed(float amount, float currentHealth, float maxHealth)
+    {
+        UpdateHealthHud();
+    }
+
+    void ShowPickupMessage(string message)
+    {
+        if (_pickupText == null)
+            return;
+
+        if (_pickupTextRoutine != null)
+            StopCoroutine(_pickupTextRoutine);
+        _pickupTextRoutine = StartCoroutine(ShowPickupText(message));
+    }
+
+    IEnumerator ShowPickupText(string message)
+    {
+        _pickupText.text = message;
+        float elapsed = 0f;
+        while (elapsed < 1.2f)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / 1.2f);
+            float alpha = t < 0.75f ? 1f : Mathf.Lerp(1f, 0f, Mathf.InverseLerp(0.75f, 1f, t));
+            _pickupText.color = new Color(1f, 0.92f, 0.25f, alpha);
+            yield return null;
+        }
+
+        _pickupText.color = new Color(1f, 0.92f, 0.25f, 0f);
+        _pickupTextRoutine = null;
+    }
+
     IEnumerator ShowDamageText(float amount)
     {
         _damageText.text = string.Format("-{0:0} HP", amount);
@@ -1016,6 +1144,59 @@ public class EndlessRunner2D : MonoBehaviour
         var obstacleSprite = PickSprite(_obstacleSprites, _builtSegments + 3);
         if (obstacleSprite != null)
             CreateSpriteVisual(obstacle.transform, obstacleSprite, Vector3.zero, 0.95f, 1.1f, 2);
+    }
+
+    void MaybeCreateFruitPickup(Transform segment, float localX, float platformTop)
+    {
+        if (_fruitSprites.Count == 0 || Random.value > highPlatformPickupChance)
+            return;
+
+        CreateFruitPickup(segment, localX, platformTop + 1.05f, PickFruitType());
+    }
+
+    void CreateFruitPickup(Transform segment, float localX, float localY, RunnerFruitPickup2D.FruitType type)
+    {
+        var pickup = new GameObject("FruitPickup_" + type);
+        pickup.transform.SetParent(segment, false);
+        pickup.transform.localPosition = new Vector3(localX, localY, 0f);
+
+        var collider = pickup.AddComponent<CircleCollider2D>();
+        collider.isTrigger = true;
+        collider.radius = 0.34f;
+
+        var fruit = pickup.AddComponent<RunnerFruitPickup2D>();
+        fruit.type = type;
+        fruit.healAmount = healFruitAmount;
+        fruit.abilityDuration = type == RunnerFruitPickup2D.FruitType.Roll ? rollDuration : doubleJumpDuration;
+
+        var sprite = PickFruitSprite(type);
+        if (sprite != null)
+            CreateSpriteVisual(pickup.transform, sprite, Vector3.zero, 0.7f, 0.7f, 5);
+    }
+
+    RunnerFruitPickup2D.FruitType PickFruitType()
+    {
+        float rollWeight = Mathf.Max(0f, 1f - healFruitWeight - doubleJumpFruitWeight);
+        float total = Mathf.Max(0.01f, healFruitWeight + doubleJumpFruitWeight + rollWeight);
+        float value = Random.value * total;
+        if (value < healFruitWeight)
+            return RunnerFruitPickup2D.FruitType.Heal;
+        if (value < healFruitWeight + doubleJumpFruitWeight)
+            return RunnerFruitPickup2D.FruitType.DoubleJump;
+        return RunnerFruitPickup2D.FruitType.Roll;
+    }
+
+    Sprite PickFruitSprite(RunnerFruitPickup2D.FruitType type)
+    {
+        if (_fruitSprites.Count == 0)
+            return null;
+
+        int index = 0;
+        if (type == RunnerFruitPickup2D.FruitType.DoubleJump)
+            index = 1;
+        else if (type == RunnerFruitPickup2D.FruitType.Roll)
+            index = 2;
+        return _fruitSprites[Mathf.Min(index, _fruitSprites.Count - 1)];
     }
 
     void CreateDecorations(Transform segment, float top, bool hasGap)

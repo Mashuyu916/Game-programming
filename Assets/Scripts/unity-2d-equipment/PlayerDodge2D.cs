@@ -15,6 +15,8 @@ public class PlayerDodge2D : MonoBehaviour
     [Tooltip("Invulnerability; can be longer than roll.")]
     public float invulnerabilityDuration = 0.25f;
     public float cooldown = 0.45f;
+    public bool endlessRunnerMode;
+    public bool requirePickupInEndlessRunner = true;
 
     [Tooltip("Match facing logic from combat/movement.")]
     public SpriteRenderer facingVisual;
@@ -24,9 +26,11 @@ public class PlayerDodge2D : MonoBehaviour
     PlayerAnimatorBridge _animatorBridge;
     float _rollUntil;
     float _cooldownUntil;
+    float _rollAbilityUntil;
     float _facingSign = 1f;
 
     public bool IsRollActive => Time.time < _rollUntil;
+    public bool HasRollAbility => !endlessRunnerMode || !requirePickupInEndlessRunner || Time.time < _rollAbilityUntil;
 
     void Awake()
     {
@@ -44,6 +48,8 @@ public class PlayerDodge2D : MonoBehaviour
         if (Time.time < _cooldownUntil)
             return;
         if (IsRollActive)
+            return;
+        if (!HasRollAbility)
             return;
         if (!Input.GetKeyDown(dodgeKey))
             return;
@@ -63,7 +69,17 @@ public class PlayerDodge2D : MonoBehaviour
     {
         if (!IsRollActive)
             return;
-        _rb.velocity = new Vector2(_facingSign * rollSpeed, _rb.velocity.y);
+        _rb.velocity = new Vector2(endlessRunnerMode ? 0f : _facingSign * rollSpeed, _rb.velocity.y);
     }
 
+    public void EnableRollAbility(float duration)
+    {
+        _rollAbilityUntil = Mathf.Max(_rollAbilityUntil, Time.time + duration);
+    }
+
+    public void ClearRollAbility()
+    {
+        _rollAbilityUntil = 0f;
+        _rollUntil = 0f;
+    }
 }

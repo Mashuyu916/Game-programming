@@ -24,6 +24,14 @@ public class EndlessRunner2D : MonoBehaviour
     const int FlightCost = 35;
     const int ReviveCost = 45;
     static EndlessRunner2D _activeRunner;
+    static readonly float[] StoryMilestoneTimes = { 30f, 60f, 90f, 120f };
+    static readonly string[] StoryMilestoneMessages =
+    {
+        "THE THUNDER LORD HAS FOUND YOU\nTHE STORM IS GAINING",
+        "THE CORE ANSWERS YOUR COURAGE\nITS FLAME BURNS BRIGHTER",
+        "THE SKY GATE IS NEAR\nDO NOT LET THE LIGHTNING TAKE THE CORE",
+        "YOU HAVE BROKEN THE THUNDER PRISON\nKEEP RUNNING BEYOND THE STORM"
+    };
 
     public enum RunnerMode
     {
@@ -109,6 +117,7 @@ public class EndlessRunner2D : MonoBehaviour
     Text _healthText;
     Text _damageText;
     Text _pickupText;
+    Text _storyText;
     Text _coinHudText;
     Text _abilityTimerText;
     GameObject _abilityTimerBackdrop;
@@ -127,9 +136,11 @@ public class EndlessRunner2D : MonoBehaviour
     Text _finalScoreText;
     Text _bestScoreText;
     Text _survivalTimeText;
+    Text _storyResultText;
     Text _newBestText;
     Coroutine _damageTextRoutine;
     Coroutine _pickupTextRoutine;
+    Coroutine _storyTextRoutine;
     int _platformLayer;
     float _nextX;
     float _elapsedSeconds;
@@ -149,6 +160,7 @@ public class EndlessRunner2D : MonoBehaviour
     float _readyInputUnlockTime;
     int _challengeCooldown;
     int _builtSegments;
+    int _storyMilestoneIndex;
     RunnerLightningChase2D _lightningChase;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -280,7 +292,10 @@ public class EndlessRunner2D : MonoBehaviour
         }
 
         if (!_isRestarting)
+        {
             _elapsedSeconds += Time.deltaTime;
+            UpdateStoryProgress();
+        }
         UpdateHud();
     }
 
@@ -338,6 +353,7 @@ public class EndlessRunner2D : MonoBehaviour
         _builtSegments = 0;
         _lastSegmentHadGap = false;
         _challengeCooldown = 0;
+        _storyMilestoneIndex = 0;
         _speedMinuteLevel = 0;
         _currentTerrainTop = groundTop;
 
@@ -392,6 +408,7 @@ public class EndlessRunner2D : MonoBehaviour
     void EnterReadyState()
     {
         _runStarted = false;
+        ClearStoryMessage();
         _readyInputUnlockTime = Time.unscaledTime + 0.45f;
         if (_readyPanel != null)
             _readyPanel.SetActive(true);
@@ -463,7 +480,7 @@ public class EndlessRunner2D : MonoBehaviour
             _lightningChase.ResetChase();
             _lightningChase.SetChasing(true);
         }
-        ShowPickupMessage("GO!");
+        ShowStoryMessage("THE SKYFIRE CORE IS YOURS\nRUN FOR THE SKY GATE", 3.4f);
     }
 
     void BeginDeathRestart(string reason, Vector3 worldPosition, GameObject source)
@@ -531,6 +548,8 @@ public class EndlessRunner2D : MonoBehaviour
             _bestScoreText.text = string.Format("BEST SCORE\n{0:000000}", bestScore);
         if (_survivalTimeText != null)
             _survivalTimeText.text = string.Format("SURVIVAL TIME\n{0:00}:{1:00}", minutes, seconds);
+        if (_storyResultText != null)
+            _storyResultText.text = GetStoryResult(totalSeconds);
         if (_newBestText != null)
             _newBestText.gameObject.SetActive(newBest);
 
@@ -546,6 +565,29 @@ public class EndlessRunner2D : MonoBehaviour
         if (source != null && source.GetComponent<EndlessRunnerObstacle2D>() != null)
             return "HIT AN OBSTACLE";
         return "DEATH";
+    }
+
+    void UpdateStoryProgress()
+    {
+        if (_storyMilestoneIndex >= StoryMilestoneTimes.Length ||
+            _elapsedSeconds < StoryMilestoneTimes[_storyMilestoneIndex])
+            return;
+
+        ShowStoryMessage(StoryMilestoneMessages[_storyMilestoneIndex], 3.2f);
+        _storyMilestoneIndex++;
+    }
+
+    string GetStoryResult(int totalSeconds)
+    {
+        if (totalSeconds >= 120)
+            return "CHAPTER COMPLETE\nTHE SKYFIRE CORE IS FREE";
+        if (totalSeconds >= 90)
+            return "THE SKY GATE WAS WITHIN REACH";
+        if (totalSeconds >= 60)
+            return "THE CORE AWAKENED IN YOUR HANDS";
+        if (totalSeconds >= 30)
+            return "THE THUNDER LORD RECLAIMED THE TRAIL";
+        return "THE ESCAPE HAS ONLY JUST BEGUN";
     }
 
     void HarvestTileSprites()
@@ -1124,6 +1166,7 @@ public class EndlessRunner2D : MonoBehaviour
         CreateHealthHud(canvasGO.transform);
         CreateCoinHud(canvasGO.transform);
         CreateAbilityTimerHud(canvasGO.transform);
+        CreateStoryHud(canvasGO.transform);
         CreateGameOverPanel(canvasGO.transform);
         CreateReadyPanel(canvasGO.transform);
         UpdateHud();
@@ -1205,11 +1248,17 @@ public class EndlessRunner2D : MonoBehaviour
             new Vector2(0f, -155f), new Vector2(500f, 100f));
         _survivalTimeText.color = new Color(0.82f, 0.94f, 1f, 1f);
 
+        _storyResultText = CreateGameOverText(
+            card.transform, "StoryResult", "", 22,
+            new Vector2(0f, -225f), new Vector2(520f, 70f));
+        _storyResultText.color = new Color(1f, 0.72f, 0.18f, 1f);
+        _storyResultText.fontStyle = FontStyle.Bold;
+
         var buttonGO = new GameObject("RunAgainButton", typeof(RectTransform));
         buttonGO.transform.SetParent(card.transform, false);
         var buttonRect = buttonGO.GetComponent<RectTransform>();
         buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
-        buttonRect.anchoredPosition = new Vector2(0f, -300f);
+        buttonRect.anchoredPosition = new Vector2(0f, -320f);
         buttonRect.sizeDelta = new Vector2(380f, 78f);
 
         var buttonImage = buttonGO.AddComponent<Image>();
@@ -1260,6 +1309,28 @@ public class EndlessRunner2D : MonoBehaviour
         _abilityTimerText.color = new Color(0.8f, 0.95f, 1f, 1f);
     }
 
+    void CreateStoryHud(Transform parent)
+    {
+        var storyGO = new GameObject("StoryText", typeof(RectTransform));
+        storyGO.transform.SetParent(parent, false);
+        _storyText = storyGO.AddComponent<Text>();
+        _storyText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        _storyText.fontSize = 30;
+        _storyText.fontStyle = FontStyle.Bold;
+        _storyText.alignment = TextAnchor.MiddleCenter;
+        _storyText.color = new Color(1f, 0.78f, 0.2f, 0f);
+        _storyText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        _storyText.verticalOverflow = VerticalWrapMode.Truncate;
+        _storyText.raycastTarget = false;
+        AddTextOutline(_storyText, new Color(0f, 0f, 0f, 0.95f), new Vector2(3f, -3f));
+
+        var rect = _storyText.rectTransform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.78f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(1000f, 110f);
+    }
+
     void CreateReadyPanel(Transform parent)
     {
         _readyPanel = new GameObject("ReadyPanel", typeof(RectTransform));
@@ -1283,6 +1354,17 @@ public class EndlessRunner2D : MonoBehaviour
         var promptOutline = instructions.GetComponent<Outline>();
         if (promptOutline != null)
             promptOutline.enabled = false;
+
+        var mission = CreateGameOverText(
+            _readyPanel.transform, "StoryMission",
+            "ESCAPE FROM THE THUNDER PRISON\n" +
+            "Carry the stolen Skyfire Core to the Sky Gate.", 29,
+            new Vector2(0f, -95f), new Vector2(920f, 100f));
+        var missionRect = mission.rectTransform;
+        missionRect.anchorMin = missionRect.anchorMax = new Vector2(0.5f, 1f);
+        missionRect.pivot = new Vector2(0.5f, 1f);
+        mission.color = new Color(1f, 0.73f, 0.16f, 1f);
+        mission.fontStyle = FontStyle.Bold;
 
         var shopButton = CreateReadyActionButton(
             _readyPanel.transform, "OpenShopButton", "SHOP", Vector2.zero, OpenShop);
@@ -1812,6 +1894,51 @@ public class EndlessRunner2D : MonoBehaviour
         if (_pickupTextRoutine != null)
             StopCoroutine(_pickupTextRoutine);
         _pickupTextRoutine = StartCoroutine(ShowPickupText(message));
+    }
+
+    void ShowStoryMessage(string message, float duration)
+    {
+        if (_storyText == null)
+            return;
+
+        if (_storyTextRoutine != null)
+            StopCoroutine(_storyTextRoutine);
+        _storyTextRoutine = StartCoroutine(ShowStoryText(message, duration));
+    }
+
+    void ClearStoryMessage()
+    {
+        if (_storyTextRoutine != null)
+        {
+            StopCoroutine(_storyTextRoutine);
+            _storyTextRoutine = null;
+        }
+
+        if (_storyText != null)
+            _storyText.color = new Color(1f, 0.78f, 0.2f, 0f);
+    }
+
+    IEnumerator ShowStoryText(string message, float duration)
+    {
+        _storyText.text = message;
+        float elapsed = 0f;
+        float fadeTime = Mathf.Min(0.4f, duration * 0.2f);
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float alpha = 1f;
+            if (elapsed < fadeTime)
+                alpha = Mathf.Clamp01(elapsed / fadeTime);
+            else if (elapsed > duration - fadeTime)
+                alpha = Mathf.Clamp01((duration - elapsed) / fadeTime);
+
+            _storyText.color = new Color(1f, 0.78f, 0.2f, alpha);
+            yield return null;
+        }
+
+        _storyText.color = new Color(1f, 0.78f, 0.2f, 0f);
+        _storyTextRoutine = null;
     }
 
     IEnumerator ShowPickupText(string message)

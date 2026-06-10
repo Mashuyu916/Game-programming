@@ -237,19 +237,21 @@ public class TitleScreenUI : MonoBehaviour
             FontStyle.Bold);
 
         string leftColumn =
-            "<b>STORY</b>\n" +
-            "The sky world is collapsing.\n" +
-            "Lightning is closing in from behind.\n" +
-            "As a wandering adventurer, run across\n" +
-            "the endless cloud sea and seek the\n" +
-            "legendary Sky Gate.\n\n" +
+            "<b>STORY: ESCAPE FROM THE THUNDER PRISON</b>\n" +
+            "The Thunder Lord stole the Skyfire Core\n" +
+            "and sealed the realm beneath an endless\n" +
+            "storm. You are the last samurai to reach\n" +
+            "his prison and reclaim its living flame.\n" +
+            "Now the Core is in your hands, but every\n" +
+            "bolt in the sky has been ordered to hunt\n" +
+            "you down before you reach the Sky Gate.\n\n" +
             "<b>CONTROLS</b>\n" +
             "SPACE / K  -  Start the run\n" +
             "SPACE / K  -  Jump\n" +
             "Press again in the air with Double Jump\n" +
             "W / S  -  Move up or down during Flight\n\n" +
             "<b>SURVIVE</b>\n" +
-            "Escape the lightning and avoid danger.\n" +
+            "Carry the Skyfire Core beyond the storm.\n" +
             "Falling into a gap ends the run.";
 
         string rightColumn =

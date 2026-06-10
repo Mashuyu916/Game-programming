@@ -24,6 +24,7 @@ public class EndlessRunner2D : MonoBehaviour
     const int FlightCost = 35;
     const int ReviveCost = 45;
     static EndlessRunner2D _activeRunner;
+    static bool _showIntroOnNextGameplayLoad;
     static readonly float[] StoryMilestoneTimes = { 30f, 60f, 90f, 120f };
     static readonly string[] StoryMilestoneMessages =
     {
@@ -156,6 +157,7 @@ public class EndlessRunner2D : MonoBehaviour
     bool _gameOverVisible;
     bool _runStarted;
     bool _introPlaying;
+    bool _introShown;
     bool _pendingShield;
     bool _pendingDoubleJump;
     bool _pendingFlight;
@@ -198,6 +200,8 @@ public class EndlessRunner2D : MonoBehaviour
 
     void Awake()
     {
+        _introShown = !_showIntroOnNextGameplayLoad;
+        _showIntroOnNextGameplayLoad = false;
         _activeRunner = this;
         ApplyModeSettings();
         _startingScrollSpeed = scrollSpeed;
@@ -233,6 +237,11 @@ public class EndlessRunner2D : MonoBehaviour
     public static bool TryRestartActiveRunner()
     {
         return TryRestartActiveRunner("DEATH", null);
+    }
+
+    public static void ShowIntroOnNextGameplayLoad()
+    {
+        _showIntroOnNextGameplayLoad = true;
     }
 
     public static bool TryRestartActiveRunner(string reason, GameObject source)
@@ -302,7 +311,10 @@ public class EndlessRunner2D : MonoBehaviour
                 Time.unscaledTime >= _readyInputUnlockTime &&
                 (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.K)))
             {
-                StartIntroSequence();
+                if (_introShown)
+                    BeginPreparedRun();
+                else
+                    StartIntroSequence();
             }
             UpdateHud();
             return;
@@ -460,6 +472,7 @@ public class EndlessRunner2D : MonoBehaviour
         if (_introPlaying)
             return;
 
+        _introShown = true;
         _introPlaying = true;
         if (_readyPanel != null)
             _readyPanel.SetActive(false);
@@ -601,6 +614,7 @@ public class EndlessRunner2D : MonoBehaviour
                 var invincibility = _player.GetComponent<PlayerInvincibility>();
                 if (invincibility != null)
                     invincibility.AddSeconds(2.5f);
+                CreateReviveFeedback(_player.position);
             }
             if (_playerBody != null)
             {
@@ -1940,6 +1954,70 @@ public class EndlessRunner2D : MonoBehaviour
             rendererText.sortingLayerName = "Default";
             rendererText.sortingOrder = 31;
         }
+    }
+
+    void CreateReviveFeedback(Vector3 worldPosition)
+    {
+        var effect = new GameObject("ReviveBurst");
+        effect.transform.position = new Vector3(worldPosition.x, worldPosition.y + 0.45f, -0.5f);
+
+        var particles = effect.AddComponent<ParticleSystem>();
+        particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+        var main = particles.main;
+        main.duration = 0.45f;
+        main.loop = false;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.85f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(2.2f, 4.8f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.1f, 0.24f);
+        main.startColor = new ParticleSystem.MinMaxGradient(
+            new Color(1f, 0.82f, 0.24f, 1f),
+            new Color(0.35f, 0.92f, 1f, 1f));
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles = 36;
+
+        var emission = particles.emission;
+        emission.rateOverTime = 0f;
+        emission.SetBursts(new[]
+        {
+            new ParticleSystem.Burst(0f, 28)
+        });
+
+        var shape = particles.shape;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 0.38f;
+
+        var colorOverLifetime = particles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        var gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(new Color(1f, 0.92f, 0.45f), 0f),
+                new GradientColorKey(new Color(0.25f, 0.88f, 1f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(1f, 0f),
+                new GradientAlphaKey(0.85f, 0.45f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        colorOverLifetime.color = gradient;
+
+        var sizeOverLifetime = particles.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(
+            1f, new AnimationCurve(
+                new Keyframe(0f, 0.35f),
+                new Keyframe(0.25f, 1f),
+                new Keyframe(1f, 0f)));
+
+        var renderer = particles.GetComponent<ParticleSystemRenderer>();
+        renderer.sortingLayerName = "Default";
+        renderer.sortingOrder = 40;
+
+        particles.Play();
+        Destroy(effect, 1.2f);
     }
 
     IEnumerator FadeAndDrift(Transform target, Vector3 localDrift)

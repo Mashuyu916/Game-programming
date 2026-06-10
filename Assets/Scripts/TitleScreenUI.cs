@@ -452,6 +452,7 @@ public class TitleScreenUI : MonoBehaviour
             yield return null;
         }
 
+        EndlessRunner2D.ShowIntroOnNextGameplayLoad();
         SceneManager.LoadScene(sceneToLoad);
     }
 

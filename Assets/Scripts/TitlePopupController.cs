@@ -12,6 +12,7 @@ public class TitlePopupController : MonoBehaviour
     {
         if (sceneBuildIndex >= 0)
         {
+            EndlessRunner2D.ShowIntroOnNextGameplayLoad();
             SceneManager.LoadScene(sceneBuildIndex);
             return;
         }
@@ -21,6 +22,7 @@ public class TitlePopupController : MonoBehaviour
             Debug.LogWarning("TitlePopupController: sceneToLoad is empty and no build index set.");
             return;
         }
+        EndlessRunner2D.ShowIntroOnNextGameplayLoad();
         SceneManager.LoadScene(sceneToLoad);
     }
 

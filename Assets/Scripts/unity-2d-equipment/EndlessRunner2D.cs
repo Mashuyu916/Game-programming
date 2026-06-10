@@ -951,10 +951,6 @@ public class EndlessRunner2D : MonoBehaviour
         if (movement != null)
             movement.endlessRunnerMode = true;
 
-        var dodge = player.GetComponent<PlayerDodge2D>();
-        if (dodge != null)
-            dodge.enabled = false;
-
         var flight = player.GetComponent<PlayerFlight2D>();
         if (flight == null)
             flight = player.gameObject.AddComponent<PlayerFlight2D>();
@@ -1371,7 +1367,7 @@ public class EndlessRunner2D : MonoBehaviour
             new Vector2(0f, -225f), new Vector2(520f, 70f));
         _storyResultText.font = _storyFont;
         _storyResultText.color = new Color(1f, 0.72f, 0.18f, 1f);
-        _storyResultText.fontStyle = FontStyle.Bold;
+        _storyResultText.fontStyle = FontStyle.Normal;
 
         var buttonGO = new GameObject("RunAgainButton", typeof(RectTransform));
         buttonGO.transform.SetParent(card.transform, false);
@@ -1434,14 +1430,14 @@ public class EndlessRunner2D : MonoBehaviour
         storyGO.transform.SetParent(parent, false);
         _storyText = storyGO.AddComponent<Text>();
         _storyText.font = _storyFont;
-        _storyText.fontSize = 32;
-        _storyText.fontStyle = FontStyle.Bold;
+        _storyText.fontSize = 30;
+        _storyText.fontStyle = FontStyle.Normal;
         _storyText.alignment = TextAnchor.MiddleCenter;
         _storyText.color = new Color(1f, 0.78f, 0.2f, 0f);
         _storyText.horizontalOverflow = HorizontalWrapMode.Wrap;
         _storyText.verticalOverflow = VerticalWrapMode.Truncate;
         _storyText.raycastTarget = false;
-        AddTextOutline(_storyText, new Color(0f, 0f, 0f, 0.95f), new Vector2(3f, -3f));
+        AddTextOutline(_storyText, new Color(0.02f, 0.06f, 0.08f, 0.8f), new Vector2(2f, -2f));
 
         var rect = _storyText.rectTransform;
         rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.78f);
@@ -1468,14 +1464,14 @@ public class EndlessRunner2D : MonoBehaviour
         lineGO.transform.SetParent(_introStoryPanel.transform, false);
         _introStoryText = lineGO.AddComponent<Text>();
         _introStoryText.font = _storyFont;
-        _introStoryText.fontSize = 42;
-        _introStoryText.fontStyle = FontStyle.Bold;
+        _introStoryText.fontSize = 40;
+        _introStoryText.fontStyle = FontStyle.Normal;
         _introStoryText.alignment = TextAnchor.MiddleCenter;
         _introStoryText.color = new Color(1f, 0.82f, 0.36f, 0f);
         _introStoryText.horizontalOverflow = HorizontalWrapMode.Wrap;
         _introStoryText.verticalOverflow = VerticalWrapMode.Truncate;
         _introStoryText.raycastTarget = false;
-        AddTextOutline(_introStoryText, new Color(0f, 0f, 0f, 1f), new Vector2(3f, -3f));
+        AddTextOutline(_introStoryText, new Color(0.02f, 0.06f, 0.08f, 0.85f), new Vector2(2f, -2f));
 
         var lineRect = _introStoryText.rectTransform;
         lineRect.anchorMin = lineRect.anchorMax = new Vector2(0.5f, 0.53f);
@@ -1494,7 +1490,7 @@ public class EndlessRunner2D : MonoBehaviour
     Font CreateStoryFont()
     {
         Font font = Font.CreateDynamicFontFromOSFont(
-            new[] { "Georgia", "Cambria", "Times New Roman" }, 32);
+            new[] { "Trebuchet MS", "Corbel", "Segoe UI", "Arial" }, 32);
         return font != null
             ? font
             : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -1523,18 +1519,6 @@ public class EndlessRunner2D : MonoBehaviour
         var promptOutline = instructions.GetComponent<Outline>();
         if (promptOutline != null)
             promptOutline.enabled = false;
-
-        var mission = CreateGameOverText(
-            _readyPanel.transform, "StoryMission",
-            "ESCAPE FROM THE THUNDER PRISON\n" +
-            "Carry the stolen Skyfire Core to the Sky Gate.", 29,
-            new Vector2(0f, -95f), new Vector2(920f, 100f));
-        mission.font = _storyFont;
-        var missionRect = mission.rectTransform;
-        missionRect.anchorMin = missionRect.anchorMax = new Vector2(0.5f, 1f);
-        missionRect.pivot = new Vector2(0.5f, 1f);
-        mission.color = new Color(1f, 0.73f, 0.16f, 1f);
-        mission.fontStyle = FontStyle.Bold;
 
         var shopButton = CreateReadyActionButton(
             _readyPanel.transform, "OpenShopButton", "SHOP", Vector2.zero, OpenShop);

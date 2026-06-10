@@ -19,6 +19,7 @@ public class TitleScreenUI : MonoBehaviour
     public Color buttonPressedColor = new Color(0.9f, 0.36f, 0.03f, 1f);
 
     CanvasGroup _screenGroup;
+    Font _storyFont;
     RectTransform _startButtonRect;
     Image _startButtonImage;
     Image _loadingOverlay;
@@ -28,6 +29,7 @@ public class TitleScreenUI : MonoBehaviour
 
     void Awake()
     {
+        _storyFont = CreateStoryFont();
         RemoveExistingCanvas();
         CreateEventSystemIfNeeded();
         CreateTitleScreen();
@@ -314,7 +316,7 @@ public class TitleScreenUI : MonoBehaviour
         var textGO = CreateUIObject(name, parent);
         var text = textGO.AddComponent<Text>();
         text.text = content;
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.font = _storyFont;
         text.fontSize = fontSize;
         text.fontStyle = style;
         text.alignment = alignment;
@@ -477,5 +479,14 @@ public class TitleScreenUI : MonoBehaviour
         rect.anchorMax = Vector2.one;
         rect.offsetMin = Vector2.zero;
         rect.offsetMax = Vector2.zero;
+    }
+
+    static Font CreateStoryFont()
+    {
+        Font font = Font.CreateDynamicFontFromOSFont(
+            new[] { "Trebuchet MS", "Corbel", "Segoe UI", "Arial" }, 28);
+        return font != null
+            ? font
+            : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
     }
 }

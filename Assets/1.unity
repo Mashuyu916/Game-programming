@@ -2355,7 +2355,6 @@ GameObject:
   - component: {fileID: 970889273}
   - component: {fileID: 970889284}
   - component: {fileID: 970889283}
-  - component: {fileID: 970889282}
   m_Layer: 6
   m_Name: Player
   m_TagString: Player
@@ -2499,26 +2498,6 @@ Transform:
   - {fileID: 731034616}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &970889282
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 970889272}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 513cbc3a4d79c2f4486a999920351760, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  dodgeKey: 304
-  rollDuration: 0.22
-  rollSpeed: 14
-  invulnerabilityDuration: 0.25
-  cooldown: 0.45
-  endlessRunnerMode: 0
-  requirePickupInEndlessRunner: 1
-  facingVisual: {fileID: 731034618}
 --- !u!114 &970889283
 MonoBehaviour:
   m_ObjectHideFlags: 0

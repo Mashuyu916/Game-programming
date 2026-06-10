@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// Minimal platformer controller for a 2D player.
 /// Attach to the Player root. Tilemap / platforms must use the "platform" layer.
-/// Yields to <see cref="PlayerDodge2D"/> while a roll is active (runs before dodge via execution order).
+/// Yields to <see cref="PlayerFlight2D"/> while cloud flight is active.
 /// </summary>
 [DefaultExecutionOrder(-50)]
 [RequireComponent(typeof(Rigidbody2D))]
@@ -51,7 +51,7 @@ public class PlayerMovement2D : MonoBehaviour
 
     Rigidbody2D _rb;
     Collider2D _col;
-    PlayerDodge2D _dodge;
+    PlayerFlight2D _flight;
 
     float _inputX;
     float _jumpBuffer;
@@ -60,8 +60,10 @@ public class PlayerMovement2D : MonoBehaviour
     bool _isGrounded;
     float _doubleJumpUntil;
     int _extraJumpsRemaining;
+    bool _suppressJumpInput;
 
     public bool HasDoubleJumpAbility => !requirePickupForDoubleJump || Time.time < _doubleJumpUntil;
+    public float DoubleJumpTimeRemaining => Mathf.Max(0f, _doubleJumpUntil - Time.time);
 
     void Reset()
     {
@@ -82,7 +84,7 @@ public class PlayerMovement2D : MonoBehaviour
         _rb.freezeRotation = true;
         _rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         _rb.interpolation = RigidbodyInterpolation2D.Interpolate;
-        _dodge = GetComponent<PlayerDodge2D>();
+        _flight = GetComponent<PlayerFlight2D>();
         ApplyDefaultGroundLayer();
 
         if (facingVisual == null)
@@ -100,7 +102,11 @@ public class PlayerMovement2D : MonoBehaviour
             ? 0f
             : Input.GetAxisRaw("Horizontal") * (invertHorizontal ? -1f : 1f);
 
-        if (Input.GetButtonDown("Jump") || Input.GetKeyDown(KeyCode.K))
+        if (_suppressJumpInput)
+        {
+            _suppressJumpInput = false;
+        }
+        else if (Input.GetButtonDown("Jump") || Input.GetKeyDown(KeyCode.K))
             _jumpBuffer = jumpBufferTime;
 
         _jumpHeld = Input.GetButton("Jump") || Input.GetKey(KeyCode.K);
@@ -111,7 +117,9 @@ public class PlayerMovement2D : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (_dodge != null && _dodge.IsRollActive)
+        if (_flight == null)
+            _flight = GetComponent<PlayerFlight2D>();
+        if (_flight != null && _flight.IsFlying)
             return;
 
         bool grounded = IsGrounded();
@@ -141,7 +149,10 @@ public class PlayerMovement2D : MonoBehaviour
             velocity.y = jumpForce;
             _jumpBuffer = 0f;
             if (canExtraJump)
+            {
                 _extraJumpsRemaining--;
+                ShowDoubleJumpFeedback();
+            }
         }
 
         if (velocity.y < 0f)
@@ -240,5 +251,72 @@ public class PlayerMovement2D : MonoBehaviour
     {
         _doubleJumpUntil = 0f;
         _extraJumpsRemaining = 0;
+    }
+
+    public void SuppressNextJumpInput()
+    {
+        _jumpBuffer = 0f;
+        _suppressJumpInput = true;
+    }
+
+    void ShowDoubleJumpFeedback()
+    {
+        EndlessRunner2D.TryShowPickupMessage("DOUBLE JUMP");
+
+        var effect = new GameObject("DoubleJumpBurst");
+        effect.transform.position = transform.position + Vector3.down * 0.35f;
+
+        var particles = effect.AddComponent<ParticleSystem>();
+        var main = particles.main;
+        main.duration = 0.18f;
+        main.loop = false;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f, 3.2f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.08f, 0.16f);
+        main.startColor = new ParticleSystem.MinMaxGradient(
+            new Color(0.55f, 0.95f, 1f, 0.95f),
+            new Color(1f, 1f, 1f, 0.9f));
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles = 12;
+
+        var emission = particles.emission;
+        emission.rateOverTime = 0f;
+        emission.SetBursts(new[]
+        {
+            new ParticleSystem.Burst(0f, 10)
+        });
+
+        var shape = particles.shape;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 0.28f;
+        shape.arc = 180f;
+        shape.rotation = new Vector3(0f, 0f, 180f);
+
+        var velocity = particles.velocityOverLifetime;
+        velocity.enabled = true;
+        velocity.space = ParticleSystemSimulationSpace.Local;
+        velocity.y = new ParticleSystem.MinMaxCurve(-0.8f, -1.8f);
+
+        var colorOverLifetime = particles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        var gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(Color.white, 0f),
+                new GradientColorKey(new Color(0.35f, 0.9f, 1f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0.95f, 0f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        colorOverLifetime.color = gradient;
+
+        var renderer = particles.GetComponent<ParticleSystemRenderer>();
+        renderer.sortingOrder = 20;
+
+        particles.Play();
+        Destroy(effect, 0.7f);
     }
 }

@@ -1,85 +1,17 @@
 using UnityEngine;
 
-/// <summary>
-/// Dead Cells-style horizontal roll: burst speed + invulnerability.
-/// Requires <see cref="Rigidbody2D"/> and <see cref="PlayerInvincibility"/> on the same object.
-/// Runs after <see cref="PlayerMovement2D"/> so roll velocity wins for that window.
-/// </summary>
-[DefaultExecutionOrder(10)]
-[RequireComponent(typeof(Rigidbody2D))]
+// Kept as an empty compatibility component so older scenes do not get a Missing Script.
+[DisallowMultipleComponent]
 public class PlayerDodge2D : MonoBehaviour
 {
-    public KeyCode dodgeKey = KeyCode.LeftShift;
-    public float rollDuration = 0.22f;
-    public float rollSpeed = 14f;
-    [Tooltip("Invulnerability; can be longer than roll.")]
-    public float invulnerabilityDuration = 0.25f;
-    public float cooldown = 0.45f;
-    public bool endlessRunnerMode;
-    public bool requirePickupInEndlessRunner = true;
-
-    [Tooltip("Match facing logic from combat/movement.")]
-    public SpriteRenderer facingVisual;
-
-    Rigidbody2D _rb;
-    PlayerInvincibility _invuln;
-    PlayerAnimatorBridge _animatorBridge;
-    float _rollUntil;
-    float _cooldownUntil;
-    float _rollAbilityUntil;
-    float _facingSign = 1f;
-
-    public bool IsRollActive => Time.time < _rollUntil;
-    public bool HasRollAbility => !endlessRunnerMode || !requirePickupInEndlessRunner || Time.time < _rollAbilityUntil;
+    public bool IsRollActive => false;
 
     void Awake()
     {
-        _rb = GetComponent<Rigidbody2D>();
-        _invuln = GetComponent<PlayerInvincibility>();
-        if (_invuln == null)
-            _invuln = gameObject.AddComponent<PlayerInvincibility>();
-        _animatorBridge = GetComponent<PlayerAnimatorBridge>();
-        if (_animatorBridge == null)
-            _animatorBridge = GetComponentInParent<PlayerAnimatorBridge>();
-    }
-
-    void Update()
-    {
-        if (Time.time < _cooldownUntil)
-            return;
-        if (IsRollActive)
-            return;
-        if (!HasRollAbility)
-            return;
-        if (!Input.GetKeyDown(dodgeKey))
-            return;
-
-        _facingSign = PlayerFacing2D.GetFacingSign(transform, facingVisual);
-        if (Mathf.Approximately(Mathf.Abs(_facingSign), 0f))
-            _facingSign = 1f;
-
-        _rollUntil = Time.time + rollDuration;
-        _cooldownUntil = Time.time + cooldown;
-        _invuln.AddSeconds(invulnerabilityDuration);
-        if (_animatorBridge != null)
-            _animatorBridge.TriggerRoll();
-    }
-
-    void FixedUpdate()
-    {
-        if (!IsRollActive)
-            return;
-        _rb.velocity = new Vector2(endlessRunnerMode ? 0f : _facingSign * rollSpeed, _rb.velocity.y);
-    }
-
-    public void EnableRollAbility(float duration)
-    {
-        _rollAbilityUntil = Mathf.Max(_rollAbilityUntil, Time.time + duration);
+        enabled = false;
     }
 
     public void ClearRollAbility()
     {
-        _rollAbilityUntil = 0f;
-        _rollUntil = 0f;
     }
 }

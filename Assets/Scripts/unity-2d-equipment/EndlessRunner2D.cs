@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.Tilemaps;
 using UnityEngine.UI;
@@ -16,6 +17,12 @@ using UnityEditor;
 public class EndlessRunner2D : MonoBehaviour
 {
     const string GameplayScene = "1";
+    const string BestScoreKey = "EndlessRunnerBestScore";
+    const string CoinWalletKey = "EndlessRunnerCoins";
+    const int ShieldCost = 15;
+    const int DoubleJumpCost = 20;
+    const int FlightCost = 35;
+    const int ReviveCost = 45;
     static EndlessRunner2D _activeRunner;
 
     public enum RunnerMode
@@ -28,7 +35,8 @@ public class EndlessRunner2D : MonoBehaviour
     [Header("Scroll")]
     public float scrollSpeed = 6.5f;
     public float speedIncreasePerSecond = 0.008f;
-    public float speedIncreasePerMinute = 0.45f;
+    public float speedIncreasePerInterval = 0.45f;
+    public float speedIncreaseIntervalSeconds = 30f;
     public float maximumSpeed = 11f;
 
     [Header("Mode")]
@@ -68,7 +76,11 @@ public class EndlessRunner2D : MonoBehaviour
     [Range(0f, 1f)] public float doubleJumpFruitWeight = 0.25f;
     public float healFruitAmount = 30f;
     public float doubleJumpDuration = 14f;
-    public float rollDuration = 12f;
+    public float flightDuration = 10f;
+
+    [Header("Coins")]
+    [Range(0f, 1f)] public float coinSpawnChance = 0.58f;
+    public int maximumCoinsPerSegment = 4;
 
     [Header("Legacy Scene Cleanup")]
     public string legacyGridName = "Grid";
@@ -87,6 +99,7 @@ public class EndlessRunner2D : MonoBehaviour
     readonly List<Sprite> _fruitSprites = new List<Sprite>();
     Sprite _skySprite;
     Sprite _solidSprite;
+    Sprite _coinSprite;
     Transform _player;
     Rigidbody2D _playerBody;
     PlayerAnimatorBridge _playerAnimator;
@@ -96,6 +109,25 @@ public class EndlessRunner2D : MonoBehaviour
     Text _healthText;
     Text _damageText;
     Text _pickupText;
+    Text _coinHudText;
+    Text _abilityTimerText;
+    GameObject _abilityTimerBackdrop;
+    GameObject _gameOverPanel;
+    GameObject _readyPanel;
+    GameObject _shopPanel;
+    Text _readyCoinText;
+    Text _shieldShopText;
+    Text _doubleJumpShopText;
+    Text _flightShopText;
+    Text _reviveShopText;
+    Button _shieldShopButton;
+    Button _doubleJumpShopButton;
+    Button _flightShopButton;
+    Button _reviveShopButton;
+    Text _finalScoreText;
+    Text _bestScoreText;
+    Text _survivalTimeText;
+    Text _newBestText;
     Coroutine _damageTextRoutine;
     Coroutine _pickupTextRoutine;
     int _platformLayer;
@@ -106,13 +138,40 @@ public class EndlessRunner2D : MonoBehaviour
     int _speedMinuteLevel;
     bool _lastSegmentHadGap;
     bool _isRestarting;
+    bool _gameOverVisible;
+    bool _runStarted;
+    bool _pendingShield;
+    bool _pendingDoubleJump;
+    bool _pendingFlight;
+    bool _pendingRevive;
+    bool _activeRevive;
+    float _shieldUntil;
+    float _readyInputUnlockTime;
     int _challengeCooldown;
     int _builtSegments;
+    RunnerLightningChase2D _lightningChase;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    static void RegisterSceneLoader()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    static void CreateForGameplayScene()
+    static void CreateForInitialGameplayScene()
     {
-        if (SceneManager.GetActiveScene().name != GameplayScene)
+        CreateForGameplayScene(SceneManager.GetActiveScene());
+    }
+
+    static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        CreateForGameplayScene(scene);
+    }
+
+    static void CreateForGameplayScene(Scene scene)
+    {
+        if (scene.name != GameplayScene)
             return;
         if (FindObjectOfType<EndlessRunner2D>() != null)
             return;
@@ -127,6 +186,7 @@ public class EndlessRunner2D : MonoBehaviour
         _startingScrollSpeed = scrollSpeed;
         _platformLayer = LayerMask.NameToLayer(PlayerMovement2D.PlatformLayerName);
         LoadCuratedPaletteSprites();
+        _coinSprite = Resources.Load<Sprite>("RunnerCoin");
         HarvestTileSprites();
         EnsurePaletteFallbacks();
         RemoveOldStaticLevel();
@@ -138,6 +198,8 @@ public class EndlessRunner2D : MonoBehaviour
         _nextX = -12f;
         for (int i = 0; i < segmentCount; i++)
             CreateSegment();
+
+        EnterReadyState();
     }
 
     void OnDestroy()
@@ -172,24 +234,68 @@ public class EndlessRunner2D : MonoBehaviour
             _activeRunner.ShowPickupMessage(message);
     }
 
+    public static void AddCoins(int amount)
+    {
+        if (amount <= 0)
+            return;
+
+        int wallet = PlayerPrefs.GetInt(CoinWalletKey, 0) + amount;
+        PlayerPrefs.SetInt(CoinWalletKey, wallet);
+        PlayerPrefs.Save();
+
+        if (_activeRunner != null)
+        {
+            _activeRunner.ShowPickupMessage("COIN +" + amount);
+            _activeRunner.UpdateCoinDisplays();
+        }
+    }
+
     void Update()
     {
-        _elapsedSeconds += Time.deltaTime;
+        if (_gameOverVisible &&
+            (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.Space)))
+        {
+            RestartRunner();
+            return;
+        }
+
+        if (!_runStarted)
+        {
+            if (_shopPanel != null && _shopPanel.activeSelf)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape))
+                    CloseShop();
+                UpdateHud();
+                return;
+            }
+
+            if (!_gameOverVisible &&
+                Time.unscaledTime >= _readyInputUnlockTime &&
+                (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.K)))
+            {
+                StartPreparedRun();
+            }
+            UpdateHud();
+            return;
+        }
+
+        if (!_isRestarting)
+            _elapsedSeconds += Time.deltaTime;
         UpdateHud();
     }
 
     void FixedUpdate()
     {
-        if (_isRestarting)
+        if (_isRestarting || !_runStarted)
             return;
 
         scrollSpeed = Mathf.Min(maximumSpeed, scrollSpeed + speedIncreasePerSecond * Time.fixedDeltaTime);
-        int elapsedMinutes = Mathf.FloorToInt(_elapsedSeconds / 60f);
-        if (elapsedMinutes > _speedMinuteLevel)
+        int speedLevel = Mathf.FloorToInt(_elapsedSeconds / Mathf.Max(1f, speedIncreaseIntervalSeconds));
+        if (speedLevel > _speedMinuteLevel)
         {
-            int gainedLevels = elapsedMinutes - _speedMinuteLevel;
-            _speedMinuteLevel = elapsedMinutes;
-            scrollSpeed = Mathf.Min(maximumSpeed, scrollSpeed + speedIncreasePerMinute * gainedLevels);
+            int gainedLevels = speedLevel - _speedMinuteLevel;
+            _speedMinuteLevel = speedLevel;
+            scrollSpeed = Mathf.Min(maximumSpeed, scrollSpeed + speedIncreasePerInterval * gainedLevels);
             ShowPickupMessage("SPEED UP  LEVEL " + (_speedMinuteLevel + 1));
         }
         if (_playerAnimator != null)
@@ -223,6 +329,9 @@ public class EndlessRunner2D : MonoBehaviour
 
     void RestartRunner()
     {
+        _gameOverVisible = false;
+        if (_gameOverPanel != null)
+            _gameOverPanel.SetActive(false);
         _isRestarting = false;
         scrollSpeed = _startingScrollSpeed;
         _elapsedSeconds = 0f;
@@ -245,6 +354,7 @@ public class EndlessRunner2D : MonoBehaviour
         ConfigurePlayerAndCamera();
         if (_playerBody != null)
         {
+            _playerBody.simulated = true;
             PlacePlayerAtGroundTop(groundTop);
             _playerBody.velocity = Vector2.zero;
             _playerBody.angularVelocity = 0f;
@@ -261,6 +371,7 @@ public class EndlessRunner2D : MonoBehaviour
         if (_playerHealth != null)
             _playerHealth.RestoreFullHealth();
         ResetPickupAbilities();
+        EnterReadyState();
         UpdateHud();
     }
 
@@ -273,9 +384,86 @@ public class EndlessRunner2D : MonoBehaviour
         if (movement != null)
             movement.ClearDoubleJumpAbility();
 
-        var dodge = _player.GetComponent<PlayerDodge2D>();
-        if (dodge != null)
-            dodge.ClearRollAbility();
+        var flight = _player.GetComponent<PlayerFlight2D>();
+        if (flight != null)
+            flight.ClearFlightAbility();
+    }
+
+    void EnterReadyState()
+    {
+        _runStarted = false;
+        _readyInputUnlockTime = Time.unscaledTime + 0.45f;
+        if (_readyPanel != null)
+            _readyPanel.SetActive(true);
+        if (_shopPanel != null)
+            _shopPanel.SetActive(false);
+
+        if (_playerBody != null)
+        {
+            PlacePlayerAtGroundTop(groundTop);
+            _playerBody.velocity = Vector2.zero;
+            _playerBody.simulated = false;
+        }
+
+        if (_playerAnimator != null)
+            _playerAnimator.ForceIdle();
+        if (_lightningChase != null)
+            _lightningChase.SetChasing(false);
+
+        UpdateReadyShopUI();
+    }
+
+    void StartPreparedRun()
+    {
+        _runStarted = true;
+        if (_readyPanel != null)
+            _readyPanel.SetActive(false);
+        if (_shopPanel != null)
+            _shopPanel.SetActive(false);
+
+        if (_playerBody != null)
+        {
+            _playerBody.simulated = true;
+            _playerBody.velocity = Vector2.zero;
+        }
+
+        var movement = _player != null ? _player.GetComponent<PlayerMovement2D>() : null;
+        if (movement != null)
+        {
+            movement.SuppressNextJumpInput();
+            if (_pendingDoubleJump)
+                movement.EnableDoubleJumpAbility(doubleJumpDuration);
+        }
+
+        if (_pendingFlight && _player != null)
+        {
+            var flight = _player.GetComponent<PlayerFlight2D>();
+            if (flight != null)
+                flight.EnableFlight(flightDuration);
+        }
+
+        if (_pendingShield && _player != null)
+        {
+            var invincibility = _player.GetComponent<PlayerInvincibility>();
+            if (invincibility != null)
+                invincibility.AddSeconds(8f);
+            _shieldUntil = Time.time + 8f;
+        }
+
+        _activeRevive = _pendingRevive;
+        _pendingShield = false;
+        _pendingDoubleJump = false;
+        _pendingFlight = false;
+        _pendingRevive = false;
+
+        if (_playerAnimator != null)
+            _playerAnimator.endlessRunnerVisualSpeed = scrollSpeed;
+        if (_lightningChase != null)
+        {
+            _lightningChase.ResetChase();
+            _lightningChase.SetChasing(true);
+        }
+        ShowPickupMessage("GO!");
     }
 
     void BeginDeathRestart(string reason, Vector3 worldPosition, GameObject source)
@@ -283,9 +471,33 @@ public class EndlessRunner2D : MonoBehaviour
         if (_isRestarting)
             return;
 
+        if (_activeRevive)
+        {
+            _activeRevive = false;
+            if (_playerHealth != null)
+                _playerHealth.RestoreFullHealth();
+            if (_player != null)
+            {
+                PlacePlayerAtGroundTop(groundTop);
+                var invincibility = _player.GetComponent<PlayerInvincibility>();
+                if (invincibility != null)
+                    invincibility.AddSeconds(2.5f);
+            }
+            if (_playerBody != null)
+            {
+                _playerBody.simulated = true;
+                _playerBody.velocity = Vector2.zero;
+            }
+            ShowPickupMessage("REVIVED");
+            return;
+        }
+
         _isRestarting = true;
         if (_playerBody != null)
+        {
             _playerBody.velocity = Vector2.zero;
+            _playerBody.simulated = false;
+        }
 
         StartCoroutine(DeathRestartRoutine(FormatDeathReason(reason, source), worldPosition));
     }
@@ -294,7 +506,37 @@ public class EndlessRunner2D : MonoBehaviour
     {
         CreateDeathFeedback(worldPosition, reason);
         yield return new WaitForSeconds(deathFeedbackSeconds);
-        RestartRunner();
+        ShowGameOver();
+    }
+
+    void ShowGameOver()
+    {
+        int finalScore = Mathf.FloorToInt(_elapsedSeconds * scorePerSecond);
+        int bestScore = PlayerPrefs.GetInt(BestScoreKey, 0);
+        bool newBest = finalScore > bestScore;
+        if (newBest)
+        {
+            bestScore = finalScore;
+            PlayerPrefs.SetInt(BestScoreKey, bestScore);
+            PlayerPrefs.Save();
+        }
+
+        int totalSeconds = Mathf.FloorToInt(_elapsedSeconds);
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+
+        if (_finalScoreText != null)
+            _finalScoreText.text = string.Format("SCORE\n{0:000000}", finalScore);
+        if (_bestScoreText != null)
+            _bestScoreText.text = string.Format("BEST SCORE\n{0:000000}", bestScore);
+        if (_survivalTimeText != null)
+            _survivalTimeText.text = string.Format("SURVIVAL TIME\n{0:00}:{1:00}", minutes, seconds);
+        if (_newBestText != null)
+            _newBestText.gameObject.SetActive(newBest);
+
+        _gameOverVisible = true;
+        if (_gameOverPanel != null)
+            _gameOverPanel.SetActive(true);
     }
 
     string FormatDeathReason(string reason, GameObject source)
@@ -527,6 +769,14 @@ public class EndlessRunner2D : MonoBehaviour
         PlacePlayerAtGroundTop(groundTop);
         AlignPlayerVisualToCollider();
 
+        if (_lightningChase == null)
+        {
+            var lightning = new GameObject("LightningChase");
+            lightning.transform.SetParent(transform, false);
+            _lightningChase = lightning.AddComponent<RunnerLightningChase2D>();
+            _lightningChase.Initialize(_player);
+        }
+
         if (_playerHealth != null)
         {
             _playerHealth.Damaged -= OnPlayerDamaged;
@@ -545,10 +795,12 @@ public class EndlessRunner2D : MonoBehaviour
 
         var dodge = player.GetComponent<PlayerDodge2D>();
         if (dodge != null)
-        {
-            dodge.enabled = true;
-            dodge.endlessRunnerMode = true;
-        }
+            dodge.enabled = false;
+
+        var flight = player.GetComponent<PlayerFlight2D>();
+        if (flight == null)
+            flight = player.gameObject.AddComponent<PlayerFlight2D>();
+        flight.enabled = true;
 
         if (disableLegacyPlayerActions)
         {
@@ -694,7 +946,40 @@ public class EndlessRunner2D : MonoBehaviour
         if (Random.value < decorationChance)
             CreateDecorations(segment, top, canMakeGap);
 
+        MaybeCreateCoinTrail(segment, top, canMakeGap, canMakeChallenge);
         _lastSegmentHadGap = canMakeGap;
+    }
+
+    void MaybeCreateCoinTrail(Transform segment, float top, bool hasGap, bool isChallenge)
+    {
+        if (_coinSprite == null || Random.value > coinSpawnChance)
+            return;
+
+        int count = Random.Range(1, Mathf.Max(2, maximumCoinsPerSegment + 1));
+        float spacing = hasGap ? 0.75f : 1.15f;
+        float centerY = top + (hasGap ? 2.1f : isChallenge ? 2.7f : 1.25f);
+        float startX = -(count - 1) * spacing * 0.5f;
+
+        for (int i = 0; i < count; i++)
+        {
+            float x = startX + i * spacing;
+            float arc = hasGap ? Mathf.Sin((i + 1f) / (count + 1f) * Mathf.PI) * 0.65f : 0f;
+            CreateRunnerCoin(segment, new Vector3(x, centerY + arc, 0f));
+        }
+    }
+
+    void CreateRunnerCoin(Transform segment, Vector3 localPosition)
+    {
+        var coin = new GameObject("RunnerCoin");
+        coin.transform.SetParent(segment, false);
+        coin.transform.localPosition = localPosition;
+
+        var collider = coin.AddComponent<CircleCollider2D>();
+        collider.isTrigger = true;
+        collider.radius = 0.34f;
+        coin.AddComponent<RunnerCoinPickup2D>();
+
+        CreateSpriteVisual(coin.transform, _coinSprite, Vector3.zero, 0.72f, 0.72f, 6);
     }
 
     void CreateChallengeSegment(Transform segment, float top, int index)
@@ -802,6 +1087,8 @@ public class EndlessRunner2D : MonoBehaviour
         if (GameObject.Find("RunnerHud") != null)
             return;
 
+        EnsureEventSystem();
+
         var canvasGO = new GameObject("RunnerHud");
         var canvas = canvasGO.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -835,7 +1122,439 @@ public class EndlessRunner2D : MonoBehaviour
         rect.sizeDelta = new Vector2(420f, 120f);
 
         CreateHealthHud(canvasGO.transform);
+        CreateCoinHud(canvasGO.transform);
+        CreateAbilityTimerHud(canvasGO.transform);
+        CreateGameOverPanel(canvasGO.transform);
+        CreateReadyPanel(canvasGO.transform);
         UpdateHud();
+    }
+
+    void EnsureEventSystem()
+    {
+        if (FindObjectOfType<EventSystem>() != null)
+            return;
+
+        var eventSystem = new GameObject("EventSystem");
+        eventSystem.AddComponent<EventSystem>();
+        eventSystem.AddComponent<StandaloneInputModule>();
+    }
+
+    void CreateGameOverPanel(Transform parent)
+    {
+        _gameOverPanel = new GameObject("GameOverPanel", typeof(RectTransform));
+        _gameOverPanel.transform.SetParent(parent, false);
+        var panelRect = _gameOverPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        var dimmer = _gameOverPanel.AddComponent<Image>();
+        dimmer.color = new Color(0.005f, 0.015f, 0.025f, 0.82f);
+
+        var card = new GameObject("ResultsCard", typeof(RectTransform));
+        card.transform.SetParent(_gameOverPanel.transform, false);
+        var cardImage = card.AddComponent<Image>();
+        cardImage.color = new Color(0.025f, 0.09f, 0.13f, 0.98f);
+        var cardOutline = card.AddComponent<Outline>();
+        cardOutline.effectColor = new Color(1f, 0.55f, 0.08f, 1f);
+        cardOutline.effectDistance = new Vector2(5f, -5f);
+
+        var cardRect = card.GetComponent<RectTransform>();
+        cardRect.anchorMin = cardRect.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRect.sizeDelta = new Vector2(620f, 760f);
+
+        var heading = CreateGameOverText(
+            card.transform, "GameOverTitle", "GAME OVER", 48,
+            new Vector2(0f, 300f), new Vector2(520f, 80f));
+        heading.color = new Color(1f, 0.55f, 0.08f, 1f);
+        heading.fontStyle = FontStyle.Bold;
+
+        _finalScoreText = CreateGameOverText(
+            card.transform, "FinalScore", "", 30,
+            new Vector2(0f, 165f), new Vector2(500f, 110f));
+        _finalScoreText.color = new Color(0.92f, 0.97f, 1f, 1f);
+
+        var bestBackdrop = new GameObject("BestScoreHighlight", typeof(RectTransform));
+        bestBackdrop.transform.SetParent(card.transform, false);
+        var bestBackdropImage = bestBackdrop.AddComponent<Image>();
+        bestBackdropImage.color = new Color(0.2f, 0.13f, 0.025f, 0.92f);
+        var bestBackdropOutline = bestBackdrop.AddComponent<Outline>();
+        bestBackdropOutline.effectColor = new Color(1f, 0.67f, 0.08f, 1f);
+        bestBackdropOutline.effectDistance = new Vector2(3f, -3f);
+        var bestBackdropRect = bestBackdrop.GetComponent<RectTransform>();
+        bestBackdropRect.anchorMin = bestBackdropRect.anchorMax = new Vector2(0.5f, 0.5f);
+        bestBackdropRect.anchoredPosition = new Vector2(0f, 15f);
+        bestBackdropRect.sizeDelta = new Vector2(500f, 155f);
+
+        _bestScoreText = CreateGameOverText(
+            bestBackdrop.transform, "BestScore", "", 38,
+            Vector2.zero, new Vector2(470f, 135f));
+        _bestScoreText.color = new Color(1f, 0.76f, 0.12f, 1f);
+        _bestScoreText.fontStyle = FontStyle.Bold;
+
+        _newBestText = CreateGameOverText(
+            card.transform, "NewBest", "NEW BEST!", 24,
+            new Vector2(0f, -92f), new Vector2(400f, 45f));
+        _newBestText.color = new Color(1f, 0.88f, 0.28f, 1f);
+        _newBestText.fontStyle = FontStyle.Bold;
+        _newBestText.gameObject.SetActive(false);
+
+        _survivalTimeText = CreateGameOverText(
+            card.transform, "SurvivalTime", "", 29,
+            new Vector2(0f, -155f), new Vector2(500f, 100f));
+        _survivalTimeText.color = new Color(0.82f, 0.94f, 1f, 1f);
+
+        var buttonGO = new GameObject("RunAgainButton", typeof(RectTransform));
+        buttonGO.transform.SetParent(card.transform, false);
+        var buttonRect = buttonGO.GetComponent<RectTransform>();
+        buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+        buttonRect.anchoredPosition = new Vector2(0f, -300f);
+        buttonRect.sizeDelta = new Vector2(380f, 78f);
+
+        var buttonImage = buttonGO.AddComponent<Image>();
+        buttonImage.color = new Color(1f, 0.5f, 0.04f, 1f);
+        var button = buttonGO.AddComponent<Button>();
+        var colors = button.colors;
+        colors.highlightedColor = new Color(1f, 0.72f, 0.14f, 1f);
+        colors.pressedColor = new Color(0.86f, 0.3f, 0.02f, 1f);
+        button.colors = colors;
+        button.onClick.AddListener(RestartRunner);
+
+        var buttonText = CreateGameOverText(
+            buttonGO.transform, "Text", "RUN AGAIN", 32,
+            Vector2.zero, new Vector2(360f, 70f));
+        buttonText.fontStyle = FontStyle.Bold;
+        buttonText.raycastTarget = false;
+
+        _gameOverPanel.SetActive(false);
+    }
+
+    void CreateCoinHud(Transform parent)
+    {
+        CreateHudBackdrop(parent, "CoinBackdrop", new Vector2(0.5f, 1f), new Vector2(0f, -24f),
+            new Vector2(230f, 58f), new Vector2(0.5f, 1f));
+
+        _coinHudText = CreateGameOverText(
+            parent, "CoinHudText", "", 27,
+            new Vector2(0f, -52f), new Vector2(220f, 48f));
+        _coinHudText.rectTransform.anchorMin = new Vector2(0.5f, 1f);
+        _coinHudText.rectTransform.anchorMax = new Vector2(0.5f, 1f);
+        _coinHudText.rectTransform.pivot = new Vector2(0.5f, 1f);
+        _coinHudText.color = new Color(1f, 0.8f, 0.12f, 1f);
+        _coinHudText.fontStyle = FontStyle.Bold;
+    }
+
+    void CreateAbilityTimerHud(Transform parent)
+    {
+        _abilityTimerBackdrop = CreateHudBackdrop(parent, "AbilityTimerBackdrop", new Vector2(0f, 1f),
+            new Vector2(28f, -150f), new Vector2(330f, 128f), new Vector2(0f, 1f));
+
+        _abilityTimerText = CreateGameOverText(
+            parent, "AbilityTimerText", "", 23,
+            new Vector2(36f, -158f), new Vector2(310f, 112f));
+        var rect = _abilityTimerText.rectTransform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        _abilityTimerText.alignment = TextAnchor.UpperLeft;
+        _abilityTimerText.color = new Color(0.8f, 0.95f, 1f, 1f);
+    }
+
+    void CreateReadyPanel(Transform parent)
+    {
+        _readyPanel = new GameObject("ReadyPanel", typeof(RectTransform));
+        _readyPanel.transform.SetParent(parent, false);
+        var fullRect = _readyPanel.GetComponent<RectTransform>();
+        fullRect.anchorMin = Vector2.zero;
+        fullRect.anchorMax = Vector2.one;
+        fullRect.offsetMin = Vector2.zero;
+        fullRect.offsetMax = Vector2.zero;
+
+        var instructions = CreateGameOverText(
+            _readyPanel.transform, "ReadyInstructions",
+            "PRESS SPACE OR K TO START", 34,
+            Vector2.zero, new Vector2(760f, 60f));
+        var promptRect = instructions.rectTransform;
+        promptRect.anchorMin = promptRect.anchorMax = new Vector2(0.5f, 0f);
+        promptRect.pivot = new Vector2(0.5f, 0f);
+        promptRect.anchoredPosition = new Vector2(0f, 42f);
+        instructions.color = new Color(0.025f, 0.04f, 0.045f, 1f);
+        instructions.fontStyle = FontStyle.Bold;
+        var promptOutline = instructions.GetComponent<Outline>();
+        if (promptOutline != null)
+            promptOutline.enabled = false;
+
+        var shopButton = CreateReadyActionButton(
+            _readyPanel.transform, "OpenShopButton", "SHOP", Vector2.zero, OpenShop);
+        var shopRect = shopButton.GetComponent<RectTransform>();
+        shopRect.anchorMin = shopRect.anchorMax = new Vector2(1f, 1f);
+        shopRect.pivot = new Vector2(1f, 1f);
+        shopRect.anchoredPosition = new Vector2(-72f, -118f);
+        shopRect.sizeDelta = new Vector2(180f, 68f);
+        shopButton.GetComponent<Image>().color = new Color(0.04f, 0.32f, 0.48f, 0.96f);
+
+        CreateShopPanel(parent);
+    }
+
+    void CreateShopPanel(Transform parent)
+    {
+        _shopPanel = new GameObject("ShopPanel", typeof(RectTransform));
+        _shopPanel.transform.SetParent(parent, false);
+        var fullRect = _shopPanel.GetComponent<RectTransform>();
+        fullRect.anchorMin = Vector2.zero;
+        fullRect.anchorMax = Vector2.one;
+        fullRect.offsetMin = Vector2.zero;
+        fullRect.offsetMax = Vector2.zero;
+
+        var dimmer = _shopPanel.AddComponent<Image>();
+        dimmer.color = new Color(0.005f, 0.02f, 0.035f, 0.86f);
+
+        var card = new GameObject("ShopCard", typeof(RectTransform));
+        card.transform.SetParent(_shopPanel.transform, false);
+        var cardRect = card.GetComponent<RectTransform>();
+        cardRect.anchorMin = cardRect.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRect.sizeDelta = new Vector2(1500f, 920f);
+
+        var cardImage = card.AddComponent<Image>();
+        cardImage.sprite = Resources.Load<Sprite>("Shop/shop");
+        cardImage.preserveAspect = true;
+        cardImage.color = Color.white;
+        var outline = card.AddComponent<Outline>();
+        outline.effectColor = new Color(1f, 0.68f, 0.08f, 1f);
+        outline.effectDistance = new Vector2(5f, -5f);
+
+        _readyCoinText = CreateGameOverText(
+            card.transform, "ReadyCoins", "", 32,
+            new Vector2(0f, 355f), new Vector2(700f, 55f));
+        _readyCoinText.color = new Color(1f, 0.8f, 0.12f, 1f);
+        _readyCoinText.fontStyle = FontStyle.Bold;
+
+        var cardShelf = new GameObject("CardShelf", typeof(RectTransform));
+        cardShelf.transform.SetParent(card.transform, false);
+        var shelfImage = cardShelf.AddComponent<Image>();
+        shelfImage.color = new Color(0.02f, 0.08f, 0.13f, 0.62f);
+        var shelfRect = cardShelf.GetComponent<RectTransform>();
+        shelfRect.anchorMin = shelfRect.anchorMax = new Vector2(0.5f, 0.5f);
+        shelfRect.anchoredPosition = new Vector2(0f, -105f);
+        shelfRect.sizeDelta = new Vector2(1260f, 380f);
+
+        _shieldShopButton = CreateShopButton(card.transform, "ShieldShopButton", "Shop/shield-card",
+            new Vector2(-450f, -105f), PurchaseShield, out _shieldShopText);
+        _doubleJumpShopButton = CreateShopButton(card.transform, "DoubleJumpShopButton", "Shop/doublejump-card",
+            new Vector2(-150f, -105f), PurchaseDoubleJump, out _doubleJumpShopText);
+        _flightShopButton = CreateShopButton(card.transform, "FlightShopButton", "Shop/fly-card",
+            new Vector2(150f, -105f), PurchaseFlight, out _flightShopText);
+        _reviveShopButton = CreateShopButton(card.transform, "ReviveShopButton", "Shop/revive-card",
+            new Vector2(450f, -105f), PurchaseRevive, out _reviveShopText);
+
+        var hint = CreateGameOverText(
+            card.transform, "ShopHint",
+            "Boosts are consumed when the next run starts.", 21,
+            new Vector2(0f, -365f), new Vector2(700f, 48f));
+        hint.color = Color.white;
+
+        CreateReadyActionButton(
+            card.transform, "BackButton", "BACK", new Vector2(0f, -415f), CloseShop);
+
+        UpdateReadyShopUI();
+        _shopPanel.SetActive(false);
+    }
+
+    Button CreateReadyActionButton(Transform parent, string name, string text,
+        Vector2 position, UnityEngine.Events.UnityAction action)
+    {
+        var buttonGO = new GameObject(name, typeof(RectTransform));
+        buttonGO.transform.SetParent(parent, false);
+        var rect = buttonGO.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = new Vector2(320f, 66f);
+
+        var image = buttonGO.AddComponent<Image>();
+        image.color = new Color(1f, 0.5f, 0.04f, 1f);
+        var button = buttonGO.AddComponent<Button>();
+        var colors = button.colors;
+        colors.highlightedColor = Color.Lerp(image.color, Color.white, 0.24f);
+        colors.pressedColor = Color.Lerp(image.color, Color.black, 0.2f);
+        button.colors = colors;
+        button.onClick.AddListener(action);
+
+        var label = CreateGameOverText(
+            buttonGO.transform, "Text", text, 28, Vector2.zero, new Vector2(300f, 58f));
+        label.fontStyle = FontStyle.Bold;
+        label.raycastTarget = false;
+        return button;
+    }
+
+    void OpenShop()
+    {
+        if (_shopPanel == null)
+            return;
+
+        if (_readyPanel != null)
+            _readyPanel.SetActive(false);
+        _shopPanel.SetActive(true);
+        SetShopButtonsInteractable(false);
+        StartCoroutine(UnlockShopButtons());
+    }
+
+    void CloseShop()
+    {
+        if (_shopPanel != null)
+            _shopPanel.SetActive(false);
+        if (_readyPanel != null)
+            _readyPanel.SetActive(true);
+        _readyInputUnlockTime = Time.unscaledTime + 0.2f;
+    }
+
+    IEnumerator UnlockShopButtons()
+    {
+        yield return new WaitForSecondsRealtime(0.25f);
+        UpdateReadyShopUI();
+    }
+
+    void SetShopButtonsInteractable(bool interactable)
+    {
+        if (_shieldShopButton != null)
+            _shieldShopButton.interactable = interactable;
+        if (_doubleJumpShopButton != null)
+            _doubleJumpShopButton.interactable = interactable;
+        if (_flightShopButton != null)
+            _flightShopButton.interactable = interactable;
+        if (_reviveShopButton != null)
+            _reviveShopButton.interactable = interactable;
+    }
+
+    Button CreateShopButton(Transform parent, string name, string resourcePath, Vector2 position,
+        UnityEngine.Events.UnityAction action, out Text label)
+    {
+        var buttonGO = new GameObject(name, typeof(RectTransform));
+        buttonGO.transform.SetParent(parent, false);
+        var rect = buttonGO.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = new Vector2(270f, 330f);
+
+        var image = buttonGO.AddComponent<Image>();
+        image.sprite = Resources.Load<Sprite>(resourcePath);
+        image.preserveAspect = true;
+        image.color = Color.white;
+
+        var button = buttonGO.AddComponent<Button>();
+        var colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, 0.94f, 0.72f, 1f);
+        colors.pressedColor = new Color(0.88f, 0.78f, 0.52f, 1f);
+        colors.disabledColor = Color.white;
+        button.colors = colors;
+        button.onClick.AddListener(action);
+
+        label = CreateGameOverText(buttonGO.transform, "Price", "", 23,
+            new Vector2(0f, -142f), new Vector2(250f, 48f));
+        label.fontStyle = FontStyle.Bold;
+        label.color = new Color(1f, 0.84f, 0.24f, 1f);
+        label.raycastTarget = false;
+        return button;
+    }
+
+    void PurchaseShield()
+    {
+        PurchaseBoost(ShieldCost, ref _pendingShield, "START SHIELD SELECTED");
+    }
+
+    void PurchaseDoubleJump()
+    {
+        PurchaseBoost(DoubleJumpCost, ref _pendingDoubleJump, "DOUBLE JUMP SELECTED");
+    }
+
+    void PurchaseFlight()
+    {
+        PurchaseBoost(FlightCost, ref _pendingFlight, "CLOUD FLIGHT SELECTED");
+    }
+
+    void PurchaseRevive()
+    {
+        PurchaseBoost(ReviveCost, ref _pendingRevive, "REVIVE SELECTED");
+    }
+
+    void PurchaseBoost(int cost, ref bool selected, string confirmation)
+    {
+        if (selected)
+            return;
+
+        int wallet = PlayerPrefs.GetInt(CoinWalletKey, 0);
+        if (wallet < cost)
+        {
+            ShowPickupMessage("NOT ENOUGH COINS");
+            return;
+        }
+
+        selected = true;
+        PlayerPrefs.SetInt(CoinWalletKey, wallet - cost);
+        PlayerPrefs.Save();
+        ShowPickupMessage(confirmation);
+        UpdateReadyShopUI();
+    }
+
+    void UpdateReadyShopUI()
+    {
+        int wallet = PlayerPrefs.GetInt(CoinWalletKey, 0);
+        if (_readyCoinText != null)
+            _readyCoinText.text = "COINS  " + wallet.ToString("000");
+
+        UpdateShopButton(_shieldShopButton, _shieldShopText, _pendingShield,
+            wallet >= ShieldCost, "START SHIELD  8s", ShieldCost);
+        UpdateShopButton(_doubleJumpShopButton, _doubleJumpShopText, _pendingDoubleJump,
+            wallet >= DoubleJumpCost, "START DOUBLE JUMP  14s", DoubleJumpCost);
+        UpdateShopButton(_flightShopButton, _flightShopText, _pendingFlight,
+            wallet >= FlightCost, "START CLOUD FLIGHT  10s", FlightCost);
+        UpdateShopButton(_reviveShopButton, _reviveShopText, _pendingRevive,
+            wallet >= ReviveCost, "ONE REVIVE", ReviveCost);
+        UpdateCoinDisplays();
+    }
+
+    void UpdateShopButton(Button button, Text label, bool selected, bool affordable,
+        string itemName, int cost)
+    {
+        if (button == null || label == null)
+            return;
+
+        button.interactable = true;
+        label.text = selected ? "SELECTED" : cost + " COINS";
+        label.color = selected
+            ? new Color(0.45f, 1f, 0.55f, 1f)
+            : affordable
+                ? new Color(1f, 0.84f, 0.24f, 1f)
+                : new Color(1f, 0.45f, 0.34f, 1f);
+    }
+
+    void UpdateCoinDisplays()
+    {
+        if (_coinHudText != null)
+            _coinHudText.text = "COINS  " + PlayerPrefs.GetInt(CoinWalletKey, 0).ToString("000");
+    }
+
+    Text CreateGameOverText(Transform parent, string name, string content, int fontSize,
+        Vector2 position, Vector2 size)
+    {
+        var textGO = new GameObject(name, typeof(RectTransform));
+        textGO.transform.SetParent(parent, false);
+        var text = textGO.AddComponent<Text>();
+        text.text = content;
+        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.fontSize = fontSize;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = Color.white;
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Truncate;
+
+        var rect = text.rectTransform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+
+        AddTextOutline(text, new Color(0f, 0f, 0f, 0.95f), new Vector2(2f, -2f));
+        return text;
     }
 
     void CreateHealthHud(Transform parent)
@@ -917,7 +1636,7 @@ public class EndlessRunner2D : MonoBehaviour
         pickupRect.sizeDelta = new Vector2(430f, 46f);
     }
 
-    void CreateHudBackdrop(Transform parent, string name, Vector2 anchor, Vector2 anchoredPosition,
+    GameObject CreateHudBackdrop(Transform parent, string name, Vector2 anchor, Vector2 anchoredPosition,
         Vector2 size, Vector2 pivot)
     {
         var panel = new GameObject(name);
@@ -932,6 +1651,7 @@ public class EndlessRunner2D : MonoBehaviour
         rect.pivot = pivot;
         rect.anchoredPosition = anchoredPosition;
         rect.sizeDelta = size;
+        return panel;
     }
 
     void AddTextOutline(Text text, Color color, Vector2 distance)
@@ -1023,6 +1743,35 @@ public class EndlessRunner2D : MonoBehaviour
         _hudText.text = string.Format("TIME {0:00}:{1:00}\nSCORE {2:000000}", minutes, seconds, score);
 
         UpdateHealthHud();
+        UpdateCoinDisplays();
+        UpdateAbilityTimerHud();
+    }
+
+    void UpdateAbilityTimerHud()
+    {
+        if (_abilityTimerText == null || _player == null)
+            return;
+
+        var lines = new List<string>();
+        float shieldRemaining = Mathf.Max(0f, _shieldUntil - Time.time);
+        if (shieldRemaining > 0f)
+            lines.Add("SHIELD  " + Mathf.CeilToInt(shieldRemaining) + "s");
+
+        var movement = _player.GetComponent<PlayerMovement2D>();
+        if (movement != null && movement.DoubleJumpTimeRemaining > 0f)
+            lines.Add("DOUBLE JUMP  " + Mathf.CeilToInt(movement.DoubleJumpTimeRemaining) + "s");
+
+        var flight = _player.GetComponent<PlayerFlight2D>();
+        if (flight != null && flight.FlightTimeRemaining > 0f)
+            lines.Add("FLIGHT  " + Mathf.CeilToInt(flight.FlightTimeRemaining) + "s");
+
+        if (_activeRevive)
+            lines.Add("REVIVE  READY");
+
+        _abilityTimerText.text = lines.Count == 0 ? "" : string.Join("\n", lines);
+        if (_abilityTimerBackdrop != null)
+            _abilityTimerBackdrop.SetActive(lines.Count > 0);
+        _abilityTimerText.gameObject.SetActive(lines.Count > 0);
     }
 
     void UpdateHealthHud()
@@ -1167,7 +1916,7 @@ public class EndlessRunner2D : MonoBehaviour
         var fruit = pickup.AddComponent<RunnerFruitPickup2D>();
         fruit.type = type;
         fruit.healAmount = healFruitAmount;
-        fruit.abilityDuration = type == RunnerFruitPickup2D.FruitType.Roll ? rollDuration : doubleJumpDuration;
+        fruit.abilityDuration = type == RunnerFruitPickup2D.FruitType.Flight ? flightDuration : doubleJumpDuration;
 
         var sprite = PickFruitSprite(type);
         if (sprite != null)
@@ -1176,14 +1925,14 @@ public class EndlessRunner2D : MonoBehaviour
 
     RunnerFruitPickup2D.FruitType PickFruitType()
     {
-        float rollWeight = Mathf.Max(0f, 1f - healFruitWeight - doubleJumpFruitWeight);
-        float total = Mathf.Max(0.01f, healFruitWeight + doubleJumpFruitWeight + rollWeight);
+        float flightWeight = Mathf.Max(0f, 1f - healFruitWeight - doubleJumpFruitWeight);
+        float total = Mathf.Max(0.01f, healFruitWeight + doubleJumpFruitWeight + flightWeight);
         float value = Random.value * total;
         if (value < healFruitWeight)
             return RunnerFruitPickup2D.FruitType.Heal;
         if (value < healFruitWeight + doubleJumpFruitWeight)
             return RunnerFruitPickup2D.FruitType.DoubleJump;
-        return RunnerFruitPickup2D.FruitType.Roll;
+        return RunnerFruitPickup2D.FruitType.Flight;
     }
 
     Sprite PickFruitSprite(RunnerFruitPickup2D.FruitType type)
@@ -1194,7 +1943,7 @@ public class EndlessRunner2D : MonoBehaviour
         int index = 0;
         if (type == RunnerFruitPickup2D.FruitType.DoubleJump)
             index = 1;
-        else if (type == RunnerFruitPickup2D.FruitType.Roll)
+        else if (type == RunnerFruitPickup2D.FruitType.Flight)
             index = 2;
         return _fruitSprites[Mathf.Min(index, _fruitSprites.Count - 1)];
     }

@@ -22,6 +22,15 @@ public class PlatformTilemapSetup2D : MonoBehaviour
 
     public void Apply()
     {
+        // The newer layer controller knows which tilemaps are decoration-only.
+        // Let it own collider setup so visual layers are never turned back on.
+        var layers = GetComponent<PlatformTilemapLayers2D>();
+        if (layers != null)
+        {
+            layers.ApplyCollidersOnly();
+            return;
+        }
+
         int layer = LayerMask.NameToLayer(platformLayerName);
         if (layer < 0)
         {

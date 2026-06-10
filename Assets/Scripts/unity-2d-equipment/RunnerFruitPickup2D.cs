@@ -8,7 +8,7 @@ public class RunnerFruitPickup2D : MonoBehaviour
     {
         Heal,
         DoubleJump,
-        Roll
+        Flight
     }
 
     public FruitType type;
@@ -34,11 +34,11 @@ public class RunnerFruitPickup2D : MonoBehaviour
                 message = "DOUBLE JUMP  " + Mathf.CeilToInt(abilityDuration) + "s";
                 break;
 
-            case FruitType.Roll:
-                var dodge = other.GetComponentInParent<PlayerDodge2D>();
-                if (dodge != null)
-                    dodge.EnableRollAbility(abilityDuration);
-                message = "ROLL  " + Mathf.CeilToInt(abilityDuration) + "s";
+            case FruitType.Flight:
+                var flight = other.GetComponentInParent<PlayerFlight2D>();
+                if (flight != null)
+                    flight.EnableFlight(abilityDuration);
+                message = "FLIGHT  " + Mathf.CeilToInt(abilityDuration) + "s  W / S";
                 break;
 
             default:

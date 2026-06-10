@@ -2,6 +2,9 @@
 
 This is a inventory for project
 
+Third-party art credits and license notes are listed in
+[REFERENCES.md](REFERENCES.md).
+
 ## Unity 工程（在本仓库里做）
 
 1. **克隆仓库**到本机（若还没有）：

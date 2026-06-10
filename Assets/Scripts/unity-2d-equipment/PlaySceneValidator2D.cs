@@ -11,11 +11,9 @@ public static class PlaySceneValidator2D
     static void Validate()
     {
         var scene = SceneManager.GetActiveScene();
-        if (scene.name == "SampleScene")
+        if (scene.name == "TitleScene")
         {
-            Debug.LogError(
-                "Play mode is running SampleScene, which is nearly empty. Open Assets/1.unity before pressing Play.");
-            return;
+            return; // TitleScene is the startup UI, not the gameplay scene.
         }
 
         var walk = GameObject.Find("Grid/" + PlatformTilemapLayers2D.DefaultWalkableTilemapName);

@@ -118,11 +118,13 @@ public class EndlessRunner2D : MonoBehaviour
     Text _damageText;
     Text _pickupText;
     Text _storyText;
+    Text _introStoryText;
     Text _coinHudText;
     Text _abilityTimerText;
     GameObject _abilityTimerBackdrop;
     GameObject _gameOverPanel;
     GameObject _readyPanel;
+    GameObject _introStoryPanel;
     GameObject _shopPanel;
     Text _readyCoinText;
     Text _shieldShopText;
@@ -141,6 +143,8 @@ public class EndlessRunner2D : MonoBehaviour
     Coroutine _damageTextRoutine;
     Coroutine _pickupTextRoutine;
     Coroutine _storyTextRoutine;
+    Coroutine _introStoryRoutine;
+    Font _storyFont;
     int _platformLayer;
     float _nextX;
     float _elapsedSeconds;
@@ -151,6 +155,7 @@ public class EndlessRunner2D : MonoBehaviour
     bool _isRestarting;
     bool _gameOverVisible;
     bool _runStarted;
+    bool _introPlaying;
     bool _pendingShield;
     bool _pendingDoubleJump;
     bool _pendingFlight;
@@ -273,6 +278,18 @@ public class EndlessRunner2D : MonoBehaviour
 
         if (!_runStarted)
         {
+            if (_introPlaying)
+            {
+                if (Input.GetKeyDown(KeyCode.Space) ||
+                    Input.GetKeyDown(KeyCode.K) ||
+                    Input.GetKeyDown(KeyCode.Return))
+                {
+                    FinishIntroAndStartRun();
+                }
+                UpdateHud();
+                return;
+            }
+
             if (_shopPanel != null && _shopPanel.activeSelf)
             {
                 if (Input.GetKeyDown(KeyCode.Escape))
@@ -285,7 +302,7 @@ public class EndlessRunner2D : MonoBehaviour
                 Time.unscaledTime >= _readyInputUnlockTime &&
                 (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.K)))
             {
-                StartPreparedRun();
+                StartIntroSequence();
             }
             UpdateHud();
             return;
@@ -408,10 +425,18 @@ public class EndlessRunner2D : MonoBehaviour
     void EnterReadyState()
     {
         _runStarted = false;
+        _introPlaying = false;
+        if (_introStoryRoutine != null)
+        {
+            StopCoroutine(_introStoryRoutine);
+            _introStoryRoutine = null;
+        }
         ClearStoryMessage();
         _readyInputUnlockTime = Time.unscaledTime + 0.45f;
         if (_readyPanel != null)
             _readyPanel.SetActive(true);
+        if (_introStoryPanel != null)
+            _introStoryPanel.SetActive(false);
         if (_shopPanel != null)
             _shopPanel.SetActive(false);
 
@@ -430,13 +455,90 @@ public class EndlessRunner2D : MonoBehaviour
         UpdateReadyShopUI();
     }
 
-    void StartPreparedRun()
+    void StartIntroSequence()
     {
-        _runStarted = true;
+        if (_introPlaying)
+            return;
+
+        _introPlaying = true;
         if (_readyPanel != null)
             _readyPanel.SetActive(false);
         if (_shopPanel != null)
             _shopPanel.SetActive(false);
+        if (_introStoryPanel != null)
+            _introStoryPanel.SetActive(true);
+
+        if (_introStoryRoutine != null)
+            StopCoroutine(_introStoryRoutine);
+        _introStoryRoutine = StartCoroutine(PlayIntroStory());
+    }
+
+    IEnumerator PlayIntroStory()
+    {
+        string[] lines =
+        {
+            "THE THUNDER LORD STOLE THE SKYFIRE CORE.",
+            "ONE SAMURAI TOOK IT BACK.",
+            "NOW THE STORM HUNTS ITS THIEF.",
+            "REACH THE SKY GATE."
+        };
+
+        foreach (string line in lines)
+        {
+            yield return FadeIntroLine(line, 1.35f);
+            if (!_introPlaying)
+                yield break;
+        }
+
+        _introStoryRoutine = null;
+        _introPlaying = false;
+        if (_introStoryPanel != null)
+            _introStoryPanel.SetActive(false);
+        BeginPreparedRun();
+    }
+
+    IEnumerator FadeIntroLine(string line, float duration)
+    {
+        if (_introStoryText == null)
+            yield break;
+
+        _introStoryText.text = line;
+        float elapsed = 0f;
+        const float fadeTime = 0.28f;
+        while (elapsed < duration && _introPlaying)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float alpha = 1f;
+            if (elapsed < fadeTime)
+                alpha = Mathf.Clamp01(elapsed / fadeTime);
+            else if (elapsed > duration - fadeTime)
+                alpha = Mathf.Clamp01((duration - elapsed) / fadeTime);
+
+            _introStoryText.color = new Color(1f, 0.82f, 0.36f, alpha);
+            yield return null;
+        }
+    }
+
+    void FinishIntroAndStartRun()
+    {
+        if (!_introPlaying)
+            return;
+
+        _introPlaying = false;
+        if (_introStoryRoutine != null)
+        {
+            StopCoroutine(_introStoryRoutine);
+            _introStoryRoutine = null;
+        }
+        if (_introStoryPanel != null)
+            _introStoryPanel.SetActive(false);
+
+        BeginPreparedRun();
+    }
+
+    void BeginPreparedRun()
+    {
+        _runStarted = true;
 
         if (_playerBody != null)
         {
@@ -480,7 +582,7 @@ public class EndlessRunner2D : MonoBehaviour
             _lightningChase.ResetChase();
             _lightningChase.SetChasing(true);
         }
-        ShowStoryMessage("THE SKYFIRE CORE IS YOURS\nRUN FOR THE SKY GATE", 3.4f);
+        ShowPickupMessage("GO!");
     }
 
     void BeginDeathRestart(string reason, Vector3 worldPosition, GameObject source)
@@ -1129,6 +1231,7 @@ public class EndlessRunner2D : MonoBehaviour
         if (GameObject.Find("RunnerHud") != null)
             return;
 
+        _storyFont = CreateStoryFont();
         EnsureEventSystem();
 
         var canvasGO = new GameObject("RunnerHud");
@@ -1167,6 +1270,7 @@ public class EndlessRunner2D : MonoBehaviour
         CreateCoinHud(canvasGO.transform);
         CreateAbilityTimerHud(canvasGO.transform);
         CreateStoryHud(canvasGO.transform);
+        CreateIntroStoryPanel(canvasGO.transform);
         CreateGameOverPanel(canvasGO.transform);
         CreateReadyPanel(canvasGO.transform);
         UpdateHud();
@@ -1251,6 +1355,7 @@ public class EndlessRunner2D : MonoBehaviour
         _storyResultText = CreateGameOverText(
             card.transform, "StoryResult", "", 22,
             new Vector2(0f, -225f), new Vector2(520f, 70f));
+        _storyResultText.font = _storyFont;
         _storyResultText.color = new Color(1f, 0.72f, 0.18f, 1f);
         _storyResultText.fontStyle = FontStyle.Bold;
 
@@ -1314,8 +1419,8 @@ public class EndlessRunner2D : MonoBehaviour
         var storyGO = new GameObject("StoryText", typeof(RectTransform));
         storyGO.transform.SetParent(parent, false);
         _storyText = storyGO.AddComponent<Text>();
-        _storyText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        _storyText.fontSize = 30;
+        _storyText.font = _storyFont;
+        _storyText.fontSize = 32;
         _storyText.fontStyle = FontStyle.Bold;
         _storyText.alignment = TextAnchor.MiddleCenter;
         _storyText.color = new Color(1f, 0.78f, 0.2f, 0f);
@@ -1329,6 +1434,56 @@ public class EndlessRunner2D : MonoBehaviour
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = Vector2.zero;
         rect.sizeDelta = new Vector2(1000f, 110f);
+    }
+
+    void CreateIntroStoryPanel(Transform parent)
+    {
+        _introStoryPanel = new GameObject("IntroStoryPanel", typeof(RectTransform));
+        _introStoryPanel.transform.SetParent(parent, false);
+        var panelRect = _introStoryPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        var dimmer = _introStoryPanel.AddComponent<Image>();
+        dimmer.color = new Color(0.005f, 0.012f, 0.025f, 0.9f);
+        dimmer.raycastTarget = true;
+
+        var lineGO = new GameObject("IntroLine", typeof(RectTransform));
+        lineGO.transform.SetParent(_introStoryPanel.transform, false);
+        _introStoryText = lineGO.AddComponent<Text>();
+        _introStoryText.font = _storyFont;
+        _introStoryText.fontSize = 42;
+        _introStoryText.fontStyle = FontStyle.Bold;
+        _introStoryText.alignment = TextAnchor.MiddleCenter;
+        _introStoryText.color = new Color(1f, 0.82f, 0.36f, 0f);
+        _introStoryText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        _introStoryText.verticalOverflow = VerticalWrapMode.Truncate;
+        _introStoryText.raycastTarget = false;
+        AddTextOutline(_introStoryText, new Color(0f, 0f, 0f, 1f), new Vector2(3f, -3f));
+
+        var lineRect = _introStoryText.rectTransform;
+        lineRect.anchorMin = lineRect.anchorMax = new Vector2(0.5f, 0.53f);
+        lineRect.pivot = new Vector2(0.5f, 0.5f);
+        lineRect.sizeDelta = new Vector2(1250f, 150f);
+
+        var skipText = CreateGameOverText(
+            _introStoryPanel.transform, "SkipText", "SPACE / K / ENTER TO SKIP", 18,
+            new Vector2(0f, -390f), new Vector2(500f, 45f));
+        skipText.color = new Color(0.7f, 0.75f, 0.82f, 0.8f);
+        skipText.raycastTarget = false;
+
+        _introStoryPanel.SetActive(false);
+    }
+
+    Font CreateStoryFont()
+    {
+        Font font = Font.CreateDynamicFontFromOSFont(
+            new[] { "Georgia", "Cambria", "Times New Roman" }, 32);
+        return font != null
+            ? font
+            : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
     }
 
     void CreateReadyPanel(Transform parent)
@@ -1360,6 +1515,7 @@ public class EndlessRunner2D : MonoBehaviour
             "ESCAPE FROM THE THUNDER PRISON\n" +
             "Carry the stolen Skyfire Core to the Sky Gate.", 29,
             new Vector2(0f, -95f), new Vector2(920f, 100f));
+        mission.font = _storyFont;
         var missionRect = mission.rectTransform;
         missionRect.anchorMin = missionRect.anchorMax = new Vector2(0.5f, 1f);
         missionRect.pivot = new Vector2(0.5f, 1f);

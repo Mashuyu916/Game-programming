@@ -5,9 +5,11 @@ using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.Tilemaps;
 using UnityEngine.UI;
+
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
+
 
 /// <summary>
 /// Replaces the old static gameplay map with recycled runner segments.
@@ -55,6 +57,11 @@ public class EndlessRunner2D : MonoBehaviour
     [Range(0f, 1f)] public float gapChance = 0.28f;
     [Range(0f, 1f)] public float challengeSegmentChance = 0.42f;
 
+    [Range(0f, 1f)] public float obstacleChance = 0.62f;
+    [Range(0f, 1f)] public float bonusPlatformChance = 0.38f;
+    [Range(0f, 1f)] public float gapChance = 0.24f;
+
+
     [Header("Track")]
     public float groundTop = -7.1f;
     public float segmentWidth = 8f;
@@ -68,6 +75,7 @@ public class EndlessRunner2D : MonoBehaviour
     public Color terrainFillColor = new Color(0.54f, 0.82f, 0.82f, 0f);
     public float playerGroundSkin = 0.02f;
     public float surfaceTileOverlap = 0.12f;
+
 
     [Header("Natural Details")]
     [Range(0f, 1f)] public float decorationChance = 0.42f;
@@ -95,6 +103,8 @@ public class EndlessRunner2D : MonoBehaviour
     public string legacyGridName = "Grid";
     public bool removeLegacyChaseEnemies = true;
     public bool disableLegacyPlayerActions = true;
+
+
 
     [Header("Score")]
     public int scorePerSecond = 10;
@@ -274,6 +284,21 @@ public class EndlessRunner2D : MonoBehaviour
             _activeRunner.ShowPickupMessage("COIN +" + amount);
             _activeRunner.UpdateCoinDisplays();
         }
+    }
+
+    void OnDestroy()
+    {
+        if (_activeRunner == this)
+            _activeRunner = null;
+    }
+
+    public static bool TryRestartActiveRunner()
+    {
+        if (_activeRunner == null)
+            return false;
+
+        _activeRunner.RestartRunner();
+        return true;
     }
 
     void Update()

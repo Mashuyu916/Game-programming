@@ -1,11 +1,10 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 [DisallowMultipleComponent]
 public class EndlessRunnerObstacle2D : MonoBehaviour
 {
     public float damage = 35f;
-    public bool reloadSceneWhenNoDamageable = true;
+    public bool restartRunnerWhenNoDamageable = true;
 
     bool _hasDamagedPlayer;
 
@@ -28,7 +27,7 @@ public class EndlessRunnerObstacle2D : MonoBehaviour
             return;
         }
 
-        if (reloadSceneWhenNoDamageable)
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        if (restartRunnerWhenNoDamageable && EndlessRunner2D.TryRestartActiveRunner("HIT AN OBSTACLE", gameObject))
+            _hasDamagedPlayer = true;
     }
 }

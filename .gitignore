@@ -44,6 +44,7 @@ mono_crash.*
 *.unitypackage.meta
 *.app
 crashlytics-build.properties
+/brackeys_platformer_assets.zip
 InitTestScene*.unity*
 /ServerData
 /[Aa]ssets/StreamingAssets/aa*
